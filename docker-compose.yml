@@ -1,0 +1,90 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bandmanager_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bandmanager}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-bandmanager}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./server/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - bandmanager_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bandmanager} -d ${POSTGRES_DB:-bandmanager}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: bandmanager_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@bandmanager.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bandmanager_net
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: bandmanager_server
+    restart: unless-stopped
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bandmanager}:${POSTGRES_PASSWORD:-secret}@postgres:5432/${POSTGRES_DB:-bandmanager}
+      JWT_SECRET: ${JWT_SECRET:-supersecret_change_in_production}
+      JWT_EXPIRES_IN: 7d
+      NODE_ENV: development
+      CLIENT_URL: http://localhost:5173
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bandmanager_net
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: bandmanager_client
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:4000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - server
+    networks:
+      - bandmanager_net
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+networks:
+  bandmanager_net:
+    driver: bridge
