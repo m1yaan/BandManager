@@ -1,0 +1,531 @@
+import { useState, useEffect, useCallback } from 'react';
+import { messagesApi, bandsApi, Message, Band } from '../lib/api';
+import { useAutoMessages } from '../hooks/useAutoMessages';
+import Modal from '../components/Modal';
+import { EmptyState } from '../components/EmptyState';
+import { toast } from 'sonner';
+import {
+  MessageSquare, Sparkles, CheckCircle2, XCircle, Bookmark,
+  Clock, MapPin, DollarSign, User, Building2, History,
+  Search, SortAsc, SortDesc, Settings, RefreshCw,
+} from 'lucide-react';
+
+type AutoInterval = 0 | 15 | 30 | 60;
+
+// ── Аватар отправителя ─────────────────────────────────────────────────────────
+function SenderAvatar({ name, avatarUrl }: { name: string; avatarUrl: string }) {
+  const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name}
+        className="w-10 h-10 rounded-xl object-cover flex-shrink-0"
+        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+      />
+    );
+  }
+
+  const colors = ['#6366f1', '#a78bfa', '#34d399', '#60a5fa', '#fb923c', '#f472b6'];
+  const color = colors[name.charCodeAt(0) % colors.length];
+
+  return (
+    <div
+      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-[13px] font-bold text-white"
+      style={{ background: color }}
+    >
+      {initials}
+    </div>
+  );
+}
+
+// ── Бейдж статуса ──────────────────────────────────────────────────────────────
+const STATUS_MAP = {
+  new:      { label: 'Новое',      bg: 'var(--info-muted)',    color: 'var(--info)' },
+  saved:    { label: 'Сохранено',  bg: 'var(--warning-muted)', color: 'var(--warning)' },
+  accepted: { label: 'Принято',    bg: 'var(--success-muted)', color: 'var(--success)' },
+  declined: { label: 'Отклонено',  bg: 'var(--error-muted)',   color: 'var(--error)' },
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const s = STATUS_MAP[status as keyof typeof STATUS_MAP] ?? STATUS_MAP.new;
+  return (
+    <span className="badge" style={{ background: s.bg, color: s.color }}>{s.label}</span>
+  );
+}
+
+// ── Карточка сообщения ─────────────────────────────────────────────────────────
+function MessageCard({
+  message,
+  onAccept,
+  onDecline,
+  onSave,
+  showActions = true,
+}: {
+  message: Message;
+  onAccept?: (m: Message) => void;
+  onDecline?: (m: Message) => void;
+  onSave?: (m: Message) => void;
+  showActions?: boolean;
+}) {
+  const date = message.proposed_date
+    ? new Date(message.proposed_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null;
+
+  const createdAt = new Date(message.created_at).toLocaleString('ru-RU', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+
+  return (
+    <div className="card p-5 animate-fade-in">
+      {/* Шапка */}
+      <div className="flex items-start gap-3 mb-4">
+        <SenderAvatar name={message.sender_name} avatarUrl={message.avatar_url} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-[14.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {message.sender_name}
+            </p>
+            <StatusBadge status={message.status} />
+          </div>
+          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+            <span className="text-[12.5px] flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
+              <User className="w-3 h-3" />{message.sender_role}
+            </span>
+            <span className="text-[12.5px] flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
+              <Building2 className="w-3 h-3" />{message.organization}
+            </span>
+          </div>
+        </div>
+        <span className="text-[11px] flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>{createdAt}</span>
+      </div>
+
+      {/* Текст */}
+      <p
+        className="text-[13.5px] leading-relaxed mb-4 p-3 rounded-xl"
+        style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+      >
+        {message.message_text}
+      </p>
+
+      {/* Детали */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        {message.city && (
+          <span className="flex items-center gap-1.5 text-[12.5px]" style={{ color: 'var(--text-secondary)' }}>
+            <MapPin className="w-3.5 h-3.5" />{message.city}
+          </span>
+        )}
+        {date && (
+          <span className="flex items-center gap-1.5 text-[12.5px]" style={{ color: 'var(--text-secondary)' }}>
+            <Clock className="w-3.5 h-3.5" />{date}
+          </span>
+        )}
+        {message.proposed_fee > 0 && (
+          <span className="badge flex items-center gap-1.5" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>
+            <DollarSign className="w-3 h-3" />
+            {message.proposed_fee.toLocaleString('ru-RU')} ₽
+          </span>
+        )}
+      </div>
+
+      {/* Действия */}
+      {showActions && message.status === 'new' && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onAccept?.(message)}
+            className="btn flex-1 text-[13px]"
+            style={{ background: 'var(--success-muted)', color: 'var(--success)', border: '1px solid rgba(52,211,153,0.2)' }}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            Принять
+          </button>
+          <button
+            onClick={() => onSave?.(message)}
+            className="btn btn-ghost"
+            title="Сохранить"
+          >
+            <Bookmark className="w-4 h-4" style={{ color: 'var(--warning)' }} />
+          </button>
+          <button
+            onClick={() => onDecline?.(message)}
+            className="btn btn-ghost"
+            title="Отклонить"
+          >
+            <XCircle className="w-4 h-4" style={{ color: 'var(--error)' }} />
+          </button>
+        </div>
+      )}
+
+      {message.status === 'saved' && showActions && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onAccept?.(message)}
+            className="btn text-[13px]"
+            style={{ background: 'var(--success-muted)', color: 'var(--success)', border: '1px solid rgba(52,211,153,0.2)' }}
+          >
+            <CheckCircle2 className="w-4 h-4" /> Принять
+          </button>
+          <button
+            onClick={() => onDecline?.(message)}
+            className="btn btn-ghost"
+          >
+            <XCircle className="w-4 h-4" style={{ color: 'var(--error)' }} /> Отклонить
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Основной компонент ─────────────────────────────────────────────────────────
+export default function MessagesPage() {
+  const [tab, setTab] = useState<'inbox' | 'history'>('inbox');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [history, setHistory] = useState<Message[]>([]);
+  const [bands, setBands] = useState<Band[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+
+  // История: фильтры
+  const [histFilter, setHistFilter] = useState('all');
+  const [histSearch, setHistSearch] = useState('');
+  const [histSort, setHistSort] = useState<'desc' | 'asc'>('desc');
+
+  // Настройки авто-генерации
+  const [showSettings, setShowSettings] = useState(false);
+  const [autoInterval, setAutoInterval] = useState<AutoInterval>(0);
+
+  // Принятие сообщения
+  const [acceptTarget, setAcceptTarget] = useState<Message | null>(null);
+  const [selectedBandId, setSelectedBandId] = useState('');
+
+  const fetchMessages = useCallback(async () => {
+    try {
+      const data = await messagesApi.getAll();
+      setMessages(data);
+    } catch { /* silent */ } finally { setLoading(false); }
+  }, []);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const data = await messagesApi.getHistory({ filter: histFilter, search: histSearch, sort: histSort });
+      setHistory(data);
+    } catch { /* silent */ }
+  }, [histFilter, histSearch, histSort]);
+
+  useEffect(() => { fetchMessages(); bandsApi.getAll().then(setBands).catch(console.error); }, [fetchMessages]);
+  useEffect(() => { if (tab === 'history') fetchHistory(); }, [tab, fetchHistory]);
+
+  // Авто-генерация
+  useAutoMessages(autoInterval, () => { fetchMessages(); toast.info('Новый концертный запрос!'); });
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const created = await messagesApi.generate();
+      toast.success(`Сгенерировано ${created.length} новых сообщений`);
+      await fetchMessages();
+    } catch { toast.error('Ошибка генерации'); }
+    finally { setGenerating(false); }
+  };
+
+  const handleAccept = async () => {
+    if (!acceptTarget) return;
+    try {
+      const { tour } = await messagesApi.accept(acceptTarget.id, selectedBandId || undefined);
+      toast.success(tour ? `Запрос принят, тур "${tour.program_name}" создан` : 'Запрос принят');
+      setAcceptTarget(null);
+      setSelectedBandId('');
+      await fetchMessages();
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+  };
+
+  const handleDecline = async (m: Message) => {
+    try {
+      await messagesApi.decline(m.id);
+      toast.success('Запрос отклонён');
+      await fetchMessages();
+    } catch { toast.error('Ошибка'); }
+  };
+
+  const handleSave = async (m: Message) => {
+    try {
+      await messagesApi.save(m.id);
+      toast.success('Сохранено');
+      await fetchMessages();
+    } catch { toast.error('Ошибка'); }
+  };
+
+  const newCount   = messages.filter(m => m.status === 'new').length;
+  const savedCount = messages.filter(m => m.status === 'saved').length;
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Заголовок */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Сообщения</h1>
+          <p className="text-[13.5px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+            {newCount > 0 ? `${newCount} новых запросов` : 'Входящие концертные запросы'}
+            {savedCount > 0 && ` · ${savedCount} сохранено`}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="btn btn-ghost btn-icon"
+            title="Настройки автогенерации"
+          >
+            <Settings className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+          </button>
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="btn btn-primary"
+          >
+            <Sparkles className="w-4 h-4" />
+            {generating ? 'Генерация...' : 'Сгенерировать'}
+          </button>
+        </div>
+      </div>
+
+      {/* Настройки авто-генерации */}
+      {showSettings && (
+        <div className="card p-4 animate-fade-in">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-[13px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+              Автогенерация сообщений:
+            </span>
+            {([
+              { value: 0,  label: 'Выключено' },
+              { value: 15, label: 'Каждые 15 сек.' },
+              { value: 30, label: 'Каждые 30 сек.' },
+              { value: 60, label: 'Каждую минуту' },
+            ] as { value: AutoInterval; label: string }[]).map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => setAutoInterval(value)}
+                className="btn text-[12.5px] py-1.5 px-3"
+                style={{
+                  background: autoInterval === value ? 'var(--accent)' : 'var(--bg-elevated)',
+                  color: autoInterval === value ? '#fff' : 'var(--text-secondary)',
+                  border: `1px solid ${autoInterval === value ? 'var(--accent)' : 'var(--border-base)'}`,
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            {autoInterval > 0 && (
+              <span className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--success)' }}>
+                <div className="pulse-dot" />
+                Активно
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Вкладки */}
+      <div className="flex gap-1" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: 0 }}>
+        {[
+          { id: 'inbox' as const,   label: 'Входящие', count: messages.length },
+          { id: 'history' as const, label: 'История',  count: null },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className="px-4 py-2.5 text-[13.5px] font-medium transition-colors flex items-center gap-2"
+            style={{
+              color: tab === t.id ? 'var(--accent)' : 'var(--text-secondary)',
+              borderBottom: tab === t.id ? '2px solid var(--accent)' : '2px solid transparent',
+              marginBottom: -1,
+            }}
+          >
+            {t.id === 'inbox' ? <MessageSquare className="w-4 h-4" /> : <History className="w-4 h-4" />}
+            {t.label}
+            {t.count !== null && t.count > 0 && (
+              <span className="badge" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
+                {t.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Входящие */}
+      {tab === 'inbox' && (
+        <>
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="card p-5 animate-pulse">
+                  <div className="flex gap-3 mb-4">
+                    <div className="skeleton flex-shrink-0" style={{ width: 40, height: 40, borderRadius: 12 }} />
+                    <div className="flex-1 space-y-2">
+                      <div className="skeleton" style={{ width: '55%', height: 16 }} />
+                      <div className="skeleton" style={{ width: '35%', height: 13 }} />
+                    </div>
+                  </div>
+                  <div className="skeleton w-full" style={{ height: 60 }} />
+                </div>
+              ))}
+            </div>
+          ) : messages.length === 0 ? (
+            <EmptyState
+              icon={<MessageSquare className="w-5 h-5" />}
+              title="Нет входящих запросов"
+              description="Нажмите «Сгенерировать», чтобы получить новые предложения"
+              action={
+                <button onClick={handleGenerate} disabled={generating} className="btn btn-primary">
+                  <Sparkles className="w-4 h-4" />
+                  {generating ? 'Генерация...' : 'Сгенерировать запросы'}
+                </button>
+              }
+            />
+          ) : (
+            <div className="space-y-3">
+              {messages.map(m => (
+                <MessageCard
+                  key={m.id}
+                  message={m}
+                  onAccept={setAcceptTarget}
+                  onDecline={handleDecline}
+                  onSave={handleSave}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* История */}
+      {tab === 'history' && (
+        <>
+          {/* Фильтры */}
+          <div className="flex flex-wrap gap-3 items-center">
+            {/* Поиск */}
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl flex-1 min-w-[200px]"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-base)' }}
+            >
+              <Search className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} />
+              <input
+                className="bg-transparent outline-none text-[13.5px] flex-1"
+                style={{ color: 'var(--text-primary)' }}
+                placeholder="Поиск по имени, организации..."
+                value={histSearch}
+                onChange={e => setHistSearch(e.target.value)}
+              />
+            </div>
+
+            {/* Фильтр по статусу */}
+            <div className="flex gap-1">
+              {[
+                { value: 'all',      label: 'Все' },
+                { value: 'accepted', label: 'Принятые' },
+                { value: 'declined', label: 'Отклонённые' },
+                { value: 'saved',    label: 'Сохранённые' },
+              ].map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setHistFilter(value)}
+                  className="btn text-[12.5px] py-1.5 px-3"
+                  style={{
+                    background: histFilter === value ? 'var(--accent)' : 'var(--bg-elevated)',
+                    color: histFilter === value ? '#fff' : 'var(--text-secondary)',
+                    border: `1px solid ${histFilter === value ? 'var(--accent)' : 'var(--border-base)'}`,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Сортировка */}
+            <button
+              onClick={() => setHistSort(p => p === 'desc' ? 'asc' : 'desc')}
+              className="btn btn-ghost btn-icon"
+              title={histSort === 'desc' ? 'Новые сначала' : 'Старые сначала'}
+            >
+              {histSort === 'desc'
+                ? <SortDesc className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+                : <SortAsc className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+              }
+            </button>
+
+            <button onClick={fetchHistory} className="btn btn-ghost btn-icon">
+              <RefreshCw className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+            </button>
+          </div>
+
+          {history.length === 0 ? (
+            <EmptyState
+              icon={<History className="w-5 h-5" />}
+              title="История пуста"
+              description="Здесь появятся обработанные запросы"
+            />
+          ) : (
+            <div className="space-y-3">
+              {history.map(m => (
+                <MessageCard key={m.id} message={m} showActions={false} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Модальное окно принятия */}
+      {acceptTarget && (
+        <Modal
+          title="Принять запрос"
+          subtitle={`${acceptTarget.sender_name} — ${acceptTarget.organization}`}
+          onClose={() => { setAcceptTarget(null); setSelectedBandId(''); }}
+          size="sm"
+          footer={
+            <div className="flex justify-end gap-3">
+              <button onClick={() => { setAcceptTarget(null); setSelectedBandId(''); }} className="btn btn-ghost">Отмена</button>
+              <button onClick={handleAccept} className="btn btn-primary">
+                <CheckCircle2 className="w-4 h-4" />
+                Принять и создать тур
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <p className="text-[13.5px]" style={{ color: 'var(--text-secondary)' }}>
+              Выберите группу для автоматического создания тура:
+            </p>
+            <div>
+              <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Группа</label>
+              <select className="input-base" value={selectedBandId} onChange={e => setSelectedBandId(e.target.value)}>
+                <option value="">Без группы (только принять)</option>
+                {bands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            {acceptTarget.proposed_date && (
+              <div className="p-3 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
+                <div className="flex justify-between text-[13px]">
+                  <span style={{ color: 'var(--text-secondary)' }}>Город</span>
+                  <span style={{ color: 'var(--text-primary)' }}>{acceptTarget.city}</span>
+                </div>
+                <div className="flex justify-between text-[13px] mt-1">
+                  <span style={{ color: 'var(--text-secondary)' }}>Дата</span>
+                  <span style={{ color: 'var(--text-primary)' }}>
+                    {new Date(acceptTarget.proposed_date).toLocaleDateString('ru-RU')}
+                  </span>
+                </div>
+                <div className="flex justify-between text-[13px] mt-1">
+                  <span style={{ color: 'var(--text-secondary)' }}>Гонорар</span>
+                  <span style={{ color: 'var(--success)' }}>
+                    {acceptTarget.proposed_fee.toLocaleString('ru-RU')} ₽
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}

@@ -24,17 +24,17 @@ app.get('/health', (_req, res) => {
 });
 
 app.use((_req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+  res.status(404).json({ error: 'Маршрут не найден' });
 });
 
 async function start() {
   await testConnection();
   app.listen(PORT, () => {
-    console.log(`[server] BandManager API running on http://localhost:${PORT}`);
+    console.log(`[server] BandManager API → http://localhost:${PORT}`);
   });
 }
 
-start().catch((err) => {
+start().catch(err => {
   console.error('[server] Fatal startup error:', err);
   process.exit(1);
 });

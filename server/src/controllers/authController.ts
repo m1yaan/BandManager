@@ -4,16 +4,18 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/auth';
 
-function signToken(userId: string, email: string): string {
+function signToken(userId: string, email: string, role: string): string {
   const options: SignOptions = {
     expiresIn: (process.env.JWT_EXPIRES_IN ?? '7d') as SignOptions['expiresIn'],
   };
-  return jwt.sign({ userId, email }, process.env.JWT_SECRET!, options);
+  return jwt.sign({ userId, email, role }, process.env.JWT_SECRET!, options);
 }
 
 // POST /api/auth/register
 export async function register(req: Request, res: Response): Promise<void> {
-  const { email, password } = req.body as { email?: string; password?: string };
+  const { email, password, role = 'manager' } = req.body as {
+    email?: string; password?: string; role?: string;
+  };
 
   if (!email || !password) {
     res.status(400).json({ error: 'Email и пароль обязательны' });
@@ -23,6 +25,7 @@ export async function register(req: Request, res: Response): Promise<void> {
     res.status(400).json({ error: 'Пароль должен содержать минимум 6 символов' });
     return;
   }
+  const validRole = role === 'artist' ? 'artist' : 'manager';
 
   try {
     const existing = await db.query('SELECT id FROM users WHERE email = $1', [email]);
@@ -33,13 +36,18 @@ export async function register(req: Request, res: Response): Promise<void> {
 
     const hash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id, email, name, avatar_url, created_at',
-      [email, hash]
+      `INSERT INTO users (email, password, role)
+       VALUES ($1, $2, $3)
+       RETURNING id, email, name, avatar_url, role, created_at`,
+      [email, hash, validRole]
     );
 
     const user = result.rows[0];
-    const token = signToken(user.id, user.email);
-    res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url } });
+    const token = signToken(user.id, user.email, user.role);
+    res.status(201).json({
+      token,
+      user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url, role: user.role },
+    });
   } catch (err) {
     console.error('[auth] register error:', err);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
@@ -57,10 +65,9 @@ export async function login(req: Request, res: Response): Promise<void> {
 
   try {
     const result = await db.query(
-      'SELECT id, email, password, name, avatar_url FROM users WHERE email = $1',
+      'SELECT id, email, password, name, avatar_url, role FROM users WHERE email = $1',
       [email]
     );
-
     const user = result.rows[0];
     if (!user) {
       res.status(401).json({ error: 'Неверный email или пароль' });
@@ -73,8 +80,11 @@ export async function login(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const token = signToken(user.id, user.email);
-    res.json({ token, user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url } });
+    const token = signToken(user.id, user.email, user.role ?? 'manager');
+    res.json({
+      token,
+      user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url, role: user.role ?? 'manager' },
+    });
   } catch (err) {
     console.error('[auth] login error:', err);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
@@ -85,14 +95,14 @@ export async function login(req: Request, res: Response): Promise<void> {
 export async function me(req: AuthRequest, res: Response): Promise<void> {
   try {
     const result = await db.query(
-      'SELECT id, email, name, avatar_url, created_at FROM users WHERE id = $1',
+      'SELECT id, email, name, avatar_url, role, created_at FROM users WHERE id = $1',
       [req.userId]
     );
     if (!result.rows[0]) {
       res.status(404).json({ error: 'Пользователь не найден' });
       return;
     }
-    res.json({ user: result.rows[0] });
+    res.json({ user: { ...result.rows[0], role: result.rows[0].role ?? 'manager' } });
   } catch (err) {
     console.error('[auth] me error:', err);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
@@ -102,10 +112,11 @@ export async function me(req: AuthRequest, res: Response): Promise<void> {
 // PUT /api/auth/profile
 export async function updateProfile(req: AuthRequest, res: Response): Promise<void> {
   const { name, avatar_url } = req.body as { name?: string; avatar_url?: string };
-
   try {
     const result = await db.query(
-      'UPDATE users SET name=$1, avatar_url=$2 WHERE id=$3 RETURNING id, email, name, avatar_url, created_at',
+      `UPDATE users SET name=$1, avatar_url=$2
+       WHERE id=$3
+       RETURNING id, email, name, avatar_url, role, created_at`,
       [name?.trim() ?? '', avatar_url?.trim() ?? '', req.userId]
     );
     if (!result.rows[0]) {

@@ -20,62 +20,78 @@ import {
   songsByBandTours, bandsByComposer, songInfo,
   topBandRepertoire, toursByBand, songsBySinger
 } from '../controllers/reportsController';
-import { authMiddleware } from '../middleware/auth';
+import {
+  getMessages, getHistory, generateMessages,
+  acceptMessage, declineMessage, saveMessage,
+} from '../controllers/messagesController';
+import {
+  getNotifications, markRead, markAllRead
+} from '../controllers/notificationsController';
+import { globalSearch } from '../controllers/searchController';
+import { getCalendarEvents, checkConflicts } from '../controllers/calendarController';
+import { authMiddleware, requireRole } from '../middleware/auth';
 
 const router = Router();
 router.use(authMiddleware);
 
-// Dashboard
 router.get('/bands/stats', getBandStats);
 
-// Bands
 router.get('/bands', getBands);
 router.get('/bands/:id/details', getBandDetails);
-router.post('/bands', createBand);
-router.put('/bands/:id', updateBand);
-router.delete('/bands/:id', deleteBand);
+router.post('/bands', requireRole('manager'), createBand);
+router.put('/bands/:id', requireRole('manager'), updateBand);
+router.delete('/bands/:id', requireRole('manager'), deleteBand);
 
-// Singers
 router.get('/singers', getSingers);
-router.post('/singers', createSinger);
-router.put('/singers/:id', updateSinger);
-router.delete('/singers/:id', deleteSinger);
+router.post('/singers', requireRole('manager'), createSinger);
+router.put('/singers/:id', requireRole('manager'), updateSinger);
+router.delete('/singers/:id', requireRole('manager'), deleteSinger);
 
-// Songs
 router.get('/songs', getSongs);
-router.post('/songs', createSong);
-router.put('/songs/:id', updateSong);
-router.delete('/songs/:id', deleteSong);
+router.post('/songs', requireRole('manager'), createSong);
+router.put('/songs/:id', requireRole('manager'), updateSong);
+router.delete('/songs/:id', requireRole('manager'), deleteSong);
 
-// Tours
 router.get('/tours', getTours);
 router.get('/tours/:id/songs', getTourSongs);
-router.post('/tours', createTour);
-router.put('/tours/:id', updateTour);
-router.delete('/tours/:id', deleteTour);
+router.post('/tours', requireRole('manager'), createTour);
+router.put('/tours/:id', requireRole('manager'), updateTour);
+router.delete('/tours/:id', requireRole('manager'), deleteTour);
 
-// Tour stops
 router.get('/tours/:id/stops', getTourStops);
-router.post('/tours/:id/stops', addTourStop);
-router.put('/tours/:id/stops/:stopId', updateTourStop);
-router.delete('/tours/:id/stops/:stopId', deleteTourStop);
+router.post('/tours/:id/stops', requireRole('manager'), addTourStop);
+router.put('/tours/:id/stops/:stopId', requireRole('manager'), updateTourStop);
+router.delete('/tours/:id/stops/:stopId', requireRole('manager'), deleteTourStop);
 
-// Tour finances
 router.get('/tours/:id/finances', getTourFinances);
-router.put('/tours/:id/finances', updateTourFinances);
+router.put('/tours/:id/finances', requireRole('manager'), updateTourFinances);
 
-// Rider
 router.get('/tours/:id/rider', getRider);
-router.post('/tours/:id/rider', addRiderItem);
-router.put('/rider/:itemId', updateRiderItem);
-router.delete('/rider/:itemId', deleteRiderItem);
+router.post('/tours/:id/rider', requireRole('manager'), addRiderItem);
+router.put('/rider/:itemId', requireRole('manager'), updateRiderItem);
+router.delete('/rider/:itemId', requireRole('manager'), deleteRiderItem);
 
-// Reports
-router.get('/reports/songs-by-band-tours', songsByBandTours);
-router.get('/reports/bands-by-composer', bandsByComposer);
-router.get('/reports/song-info', songInfo);
-router.get('/reports/top-band-repertoire', topBandRepertoire);
-router.get('/reports/tours-by-band', toursByBand);
-router.get('/reports/songs-by-singer', songsBySinger);
+router.get('/reports/songs-by-band-tours', requireRole('manager'), songsByBandTours);
+router.get('/reports/bands-by-composer', requireRole('manager'), bandsByComposer);
+router.get('/reports/song-info', requireRole('manager'), songInfo);
+router.get('/reports/top-band-repertoire', requireRole('manager'), topBandRepertoire);
+router.get('/reports/tours-by-band', requireRole('manager'), toursByBand);
+router.get('/reports/songs-by-singer', requireRole('manager'), songsBySinger);
+
+router.get('/messages', requireRole('manager'), getMessages);
+router.get('/messages/history', requireRole('manager'), getHistory);
+router.post('/messages/generate', requireRole('manager'), generateMessages);
+router.post('/messages/:id/accept', requireRole('manager'), acceptMessage);
+router.post('/messages/:id/decline', requireRole('manager'), declineMessage);
+router.post('/messages/:id/save', requireRole('manager'), saveMessage);
+
+router.get('/notifications', getNotifications);
+router.post('/notifications/:id/read', markRead);
+router.post('/notifications/read-all', markAllRead);
+
+router.get('/search', globalSearch);
+
+router.get('/calendar', getCalendarEvents);
+router.get('/calendar/conflicts', checkConflicts);
 
 export default router;

@@ -1,11 +1,14 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { authApi, User } from '../lib/api';
+import { authApi, User, UserRole } from '../lib/api';
 
 type AuthContextType = {
   user: User | null;
   loading: boolean;
+  role: UserRole;
+  isManager: boolean;
+  isArtist: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, role?: UserRole) => Promise<void>;
   signOut: () => void;
   refreshUser: () => Promise<void>;
 };
@@ -13,6 +16,9 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  role: 'manager',
+  isManager: false,
+  isArtist: false,
   signIn: async () => {},
   signUp: async () => {},
   signOut: () => {},
@@ -27,8 +33,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem('token');
     if (!token) { setLoading(false); return; }
     try {
-      const { user } = await authApi.me();
-      setUser(user);
+      const { user: u } = await authApi.me();
+      setUser({ ...u, role: u.role ?? 'manager' });
     } catch {
       localStorage.removeItem('token');
     } finally {
@@ -39,15 +45,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { loadUser(); }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { token, user } = await authApi.login(email, password);
+    const { token, user: u } = await authApi.login(email, password);
     localStorage.setItem('token', token);
-    setUser(user);
+    setUser({ ...u, role: u.role ?? 'manager' });
   };
 
-  const signUp = async (email: string, password: string) => {
-    const { token, user } = await authApi.register(email, password);
+  const signUp = async (email: string, password: string, role: UserRole = 'manager') => {
+    const { token, user: u } = await authApi.register(email, password, role);
     localStorage.setItem('token', token);
-    setUser(user);
+    setUser({ ...u, role: u.role ?? role });
   };
 
   const signOut = () => {
@@ -57,13 +63,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      const { user } = await authApi.me();
-      setUser(user);
+      const { user: u } = await authApi.me();
+      setUser({ ...u, role: u.role ?? 'manager' });
     } catch { /* ignore */ }
   };
 
+  const role = user?.role ?? 'manager';
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, refreshUser }}>
+    <AuthContext.Provider value={{
+      user, loading, role,
+      isManager: role === 'manager',
+      isArtist: role === 'artist',
+      signIn, signUp, signOut, refreshUser,
+    }}>
       {children}
     </AuthContext.Provider>
   );
