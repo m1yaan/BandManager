@@ -22,11 +22,11 @@ export function authMiddleware(
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as {
       userId: string;
       email: string;
-      role?: string;
+      role: string;
     };
-    req.userId = payload.userId;
+    req.userId    = payload.userId;
     req.userEmail = payload.email;
-    req.userRole = payload.role ?? 'manager';
+    req.userRole  = payload.role;
     next();
   } catch {
     res.status(401).json({ error: 'Недействительный или просроченный токен' });
@@ -41,4 +41,22 @@ export function requireRole(...roles: string[]) {
     }
     next();
   };
+}
+
+// Admin может всё что manager + artist
+export function requireManager(req: AuthRequest, res: Response, next: NextFunction): void {
+  const allowed = ['manager', 'admin'];
+  if (!req.userRole || !allowed.includes(req.userRole)) {
+    res.status(403).json({ error: 'Доступ только для менеджеров' });
+    return;
+  }
+  next();
+}
+
+export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
+  if (req.userRole !== 'admin') {
+    res.status(403).json({ error: 'Доступ только для администраторов' });
+    return;
+  }
+  next();
 }

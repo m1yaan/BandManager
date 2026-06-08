@@ -7,6 +7,7 @@ type AuthContextType = {
   role: UserRole;
   isManager: boolean;
   isArtist: boolean;
+  isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, role?: UserRole) => Promise<void>;
   signOut: () => void;
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   role: 'manager',
   isManager: false,
   isArtist: false,
+  isAdmin: false,
   signIn: async () => {},
   signUp: async () => {},
   signOut: () => {},
@@ -33,8 +35,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem('token');
     if (!token) { setLoading(false); return; }
     try {
-      const { user: u } = await authApi.me();
-      setUser({ ...u, role: u.role ?? 'manager' });
+      const { user } = await authApi.me();
+      setUser(user);
     } catch {
       localStorage.removeItem('token');
     } finally {
@@ -45,15 +47,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { loadUser(); }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { token, user: u } = await authApi.login(email, password);
+    const { token, user } = await authApi.login(email, password);
     localStorage.setItem('token', token);
-    setUser({ ...u, role: u.role ?? 'manager' });
+    setUser(user);
   };
 
   const signUp = async (email: string, password: string, role: UserRole = 'manager') => {
-    const { token, user: u } = await authApi.register(email, password, role);
+    const { token, user } = await authApi.register(email, password, role);
     localStorage.setItem('token', token);
-    setUser({ ...u, role: u.role ?? role });
+    setUser(user);
   };
 
   const signOut = () => {
@@ -63,18 +65,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      const { user: u } = await authApi.me();
-      setUser({ ...u, role: u.role ?? 'manager' });
-    } catch { /* ignore */ }
+      const { user } = await authApi.me();
+      setUser(user);
+    } catch {}
   };
 
-  const role = user?.role ?? 'manager';
+  const role = (user?.role ?? 'manager') as UserRole;
 
   return (
     <AuthContext.Provider value={{
       user, loading, role,
-      isManager: role === 'manager',
-      isArtist: role === 'artist',
+      isManager: role === 'manager' || role === 'admin',
+      isArtist:  role === 'artist',
+      isAdmin:   role === 'admin',
       signIn, signUp, signOut, refreshUser,
     }}>
       {children}

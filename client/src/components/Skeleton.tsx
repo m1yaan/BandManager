@@ -15,7 +15,7 @@ export function Skeleton({ className = '', width, height }: SkeletonProps) {
 
 export function SkeletonCard() {
   return (
-    <div className="card p-5 space-y-3">
+    <div className="glass-card p-5 space-y-3">
       <div className="skeleton" style={{ width: 40, height: 40, borderRadius: 12 }} />
       <div className="skeleton" style={{ width: '60%', height: 28 }} />
       <div className="skeleton" style={{ width: '80%', height: 14 }} />
@@ -39,7 +39,7 @@ export function SkeletonList({ rows = 3 }: { rows?: number }) {
   return (
     <div className="space-y-3">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="card p-4 flex items-center gap-4">
+        <div key={i} className="glass-card p-4 flex items-center gap-4">
           <div className="skeleton flex-shrink-0" style={{ width: 40, height: 40, borderRadius: 12 }} />
           <div className="flex-1 space-y-2">
             <div className="skeleton" style={{ width: '55%', height: 16 }} />

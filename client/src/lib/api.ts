@@ -1,6 +1,6 @@
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
-export type UserRole = 'manager' | 'artist';
+export type UserRole = 'manager' | 'artist' | 'admin';
 
 export type User = {
   id: string;
@@ -8,6 +8,7 @@ export type User = {
   name?: string;
   avatar_url?: string;
   role: UserRole;
+  is_blocked?: boolean;
   created_at?: string;
 };
 
@@ -45,8 +46,8 @@ export type Tour = {
   start_date: string | null;
   end_date: string | null;
   avg_ticket_price: number;
-  band_id: string;
-  band?: Band;
+  band_id: string | null;
+  band?: Band | null;
   created_by: string;
   created_at: string;
   fee?: number;
@@ -56,6 +57,8 @@ export type Tour = {
   per_diem?: number;
   hotel?: number;
   other_expenses?: number;
+  city_coefficient?: number;
+  rider_status?: 'empty' | 'partial' | 'complete';
 };
 
 export type TourStop = {
@@ -85,7 +88,14 @@ export type DashboardStats = {
   topBands: { name: string; rating: number | null; country: string }[];
 };
 
-export type MessageStatus = 'new' | 'saved' | 'accepted' | 'declined';
+export type FinancialMonth = {
+  month: string;
+  доходы: number;
+  расходы: number;
+  прибыль: number;
+};
+
+export type MessageStatus = 'new' | 'deferred' | 'accepted' | 'declined';
 
 export type Message = {
   id: string;
@@ -121,18 +131,45 @@ export type CalendarEvent = {
   start_date: string;
   end_date: string | null;
   band_name?: string;
-  sender_name?: string;
   type: 'tour' | 'stop' | 'offer';
   color: string;
-  tour_id?: string;
 };
 
 export type SearchResults = {
-  bands: { id: string; name: string; country: string; rating: number | null }[];
-  singers: { id: string; name: string }[];
-  songs: { id: string; title: string; composer: string }[];
-  tours: { id: string; program_name: string; city: string; start_date: string | null }[];
+  bands:    { id: string; name: string; country: string; rating: number | null }[];
+  singers:  { id: string; name: string }[];
+  songs:    { id: string; title: string; composer: string }[];
+  tours:    { id: string; program_name: string; city: string; start_date: string | null }[];
   messages: { id: string; sender_name: string; organization: string; city: string; status: string }[];
+};
+
+export type SupportTicket = {
+  id: string;
+  user_id: string;
+  subject: string;
+  message: string;
+  file_url: string;
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  admin_note: string;
+  created_at: string;
+  updated_at: string;
+  user_email?: string;
+  user_name?: string;
+};
+
+export type AdminStats = {
+  users:    { total: number; blocked: number };
+  tickets:  { total: number; open: number };
+  messages: { unread: number };
+};
+
+export type RiderAttentionItem = {
+  id: string;
+  program_name: string;
+  city: string;
+  start_date: string | null;
+  rider_status: 'empty' | 'partial' | 'complete';
+  band_name: string | null;
 };
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -142,7 +179,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...(options.headers as Record<string, string>),
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   const data = await res.json().catch(() => ({ error: 'Неизвестная ошибка' }));
   if (!res.ok) throw new Error(data.error ?? `Ошибка: ${res.status}`);
@@ -160,13 +196,13 @@ export const authApi = {
     }),
   me: () => request<{ user: User }>('/api/auth/me'),
   updateProfile: (p: { name?: string; avatar_url?: string }) =>
-    request<{ user: User }>('/api/auth/profile', {
-      method: 'PUT', body: JSON.stringify(p),
-    }),
+    request<{ user: User }>('/api/auth/profile', { method: 'PUT', body: JSON.stringify(p) }),
 };
 
 export const dashboardApi = {
   getStats: () => request<DashboardStats>('/api/bands/stats'),
+  getFinancials: () => request<FinancialMonth[]>('/api/dashboard/financials'),
+  getRiderAttention: () => request<RiderAttentionItem[]>('/api/dashboard/rider-attention'),
 };
 
 export const bandsApi = {
@@ -183,6 +219,8 @@ export const bandsApi = {
 
 export const singersApi = {
   getAll: () => request<Singer[]>('/api/singers'),
+  getBands: (id: string) => request<Band[]>(`/api/singers/${id}/bands`),
+  getSongs: (id: string) => request<Song[]>(`/api/singers/${id}/songs`),
   create: (name: string) =>
     request<Singer>('/api/singers', { method: 'POST', body: JSON.stringify({ name }) }),
   update: (id: string, name: string) =>
@@ -193,6 +231,14 @@ export const singersApi = {
 
 export const songsApi = {
   getAll: () => request<Song[]>('/api/songs'),
+  getSingers: (id: string) => request<Singer[]>(`/api/songs/${id}/singers`),
+  getBands: (id: string) => request<Band[]>(`/api/songs/${id}/bands`),
+  addSinger: (songId: string, singerId: string) =>
+    request<{ success: boolean }>(`/api/songs/${songId}/singers`, {
+      method: 'POST', body: JSON.stringify({ singerId }),
+    }),
+  removeSinger: (songId: string, singerId: string) =>
+    request<{ success: boolean }>(`/api/songs/${songId}/singers/${singerId}`, { method: 'DELETE' }),
   create: (p: { title: string; composer?: string; lyricist?: string; creation_year?: number | null }) =>
     request<Song>('/api/songs', { method: 'POST', body: JSON.stringify(p) }),
   update: (id: string, p: { title: string; composer?: string; lyricist?: string; creation_year?: number | null }) =>
@@ -204,9 +250,9 @@ export const songsApi = {
 export const toursApi = {
   getAll: () => request<Tour[]>('/api/tours'),
   getSongs: (tourId: string) => request<Song[]>(`/api/tours/${tourId}/songs`),
-  create: (p: { program_name: string; city?: string; start_date?: string | null; end_date?: string | null; avg_ticket_price?: number; band_id: string; songIds?: string[] }) =>
+  create: (p: { program_name: string; city?: string; start_date?: string | null; end_date?: string | null; avg_ticket_price?: number; band_id?: string | null; songIds?: string[] }) =>
     request<Tour>('/api/tours', { method: 'POST', body: JSON.stringify(p) }),
-  update: (id: string, p: { program_name: string; city?: string; start_date?: string | null; end_date?: string | null; avg_ticket_price?: number; band_id?: string; songIds?: string[] }) =>
+  update: (id: string, p: { program_name: string; city?: string; start_date?: string | null; end_date?: string | null; avg_ticket_price?: number; band_id?: string | null; songIds?: string[] }) =>
     request<Tour>(`/api/tours/${id}`, { method: 'PUT', body: JSON.stringify(p) }),
   delete: (id: string) =>
     request<{ success: boolean }>(`/api/tours/${id}`, { method: 'DELETE' }),
@@ -218,7 +264,7 @@ export const toursApi = {
   deleteStop: (tourId: string, stopId: string) =>
     request<{ success: boolean }>(`/api/tours/${tourId}/stops/${stopId}`, { method: 'DELETE' }),
   getFinances: (tourId: string) => request<Partial<Tour>>(`/api/tours/${tourId}/finances`),
-  updateFinances: (tourId: string, p: Partial<Tour>) =>
+  updateFinances: (tourId: string, p: Partial<Tour> & { base_price?: number }) =>
     request<Tour>(`/api/tours/${tourId}/finances`, { method: 'PUT', body: JSON.stringify(p) }),
   getRider: (tourId: string) => request<RiderItem[]>(`/api/tours/${tourId}/rider`),
   addRiderItem: (tourId: string, p: { item_name: string; status?: string; photo_url?: string; note?: string }) =>
@@ -252,6 +298,9 @@ export const reportsApi = {
 
 export const messagesApi = {
   getAll: () => request<Message[]>('/api/messages'),
+  getDeferred: () => request<Message[]>('/api/messages/deferred'),
+  getRecent: () => request<Message[]>('/api/messages/recent'),
+  getUnreadCount: () => request<{ count: number }>('/api/messages/unread-count'),
   getHistory: (params?: { filter?: string; search?: string; sort?: string }) => {
     const q = new URLSearchParams(params as Record<string, string>).toString();
     return request<Message[]>(`/api/messages/history${q ? '?' + q : ''}`);
@@ -261,23 +310,18 @@ export const messagesApi = {
     request<{ message: Message; tour: Tour | null }>(`/api/messages/${id}/accept`, {
       method: 'POST', body: JSON.stringify({ bandId }),
     }),
-  decline: (id: string) =>
-    request<Message>(`/api/messages/${id}/decline`, { method: 'POST' }),
-  save: (id: string) =>
-    request<Message>(`/api/messages/${id}/save`, { method: 'POST' }),
+  decline: (id: string) => request<Message>(`/api/messages/${id}/decline`, { method: 'POST' }),
+  defer: (id: string) => request<Message>(`/api/messages/${id}/defer`, { method: 'POST' }),
 };
 
 export const notificationsApi = {
   getAll: () => request<{ notifications: Notification[]; unreadCount: number }>('/api/notifications'),
-  markRead: (id: string) =>
-    request<{ success: boolean }>(`/api/notifications/${id}/read`, { method: 'POST' }),
-  markAllRead: () =>
-    request<{ success: boolean }>('/api/notifications/read-all', { method: 'POST' }),
+  markRead: (id: string) => request<{ success: boolean }>(`/api/notifications/${id}/read`, { method: 'POST' }),
+  markAllRead: () => request<{ success: boolean }>('/api/notifications/read-all', { method: 'POST' }),
 };
 
 export const searchApi = {
-  search: (q: string) =>
-    request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
+  search: (q: string) => request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
 };
 
 export const calendarApi = {
@@ -289,4 +333,27 @@ export const calendarApi = {
     const q = new URLSearchParams(params as Record<string, string>).toString();
     return request<{ conflicts: Tour[] }>(`/api/calendar/conflicts?${q}`);
   },
+};
+
+export const adminApi = {
+  getStats: () => request<AdminStats>('/api/admin/stats'),
+  getUsers: () => request<User[]>('/api/admin/users'),
+  getUser: (id: string) => request<User>(`/api/admin/users/${id}`),
+  updateUser: (id: string, data: { role: string }) =>
+    request<User>(`/api/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  blockUser: (id: string) => request<User>(`/api/admin/users/${id}/block`, { method: 'POST' }),
+  unblockUser: (id: string) => request<User>(`/api/admin/users/${id}/unblock`, { method: 'POST' }),
+  deleteUser: (id: string) => request<{ success: boolean }>(`/api/admin/users/${id}`, { method: 'DELETE' }),
+};
+
+export const supportApi = {
+  getAll: (status?: string) => {
+    const q = status && status !== 'all' ? `?status=${status}` : '';
+    return request<SupportTicket[]>(`/api/support${q}`);
+  },
+  getOne: (id: string) => request<SupportTicket>(`/api/support/${id}`),
+  create: (p: { subject: string; message: string; file_url?: string }) =>
+    request<SupportTicket>('/api/support', { method: 'POST', body: JSON.stringify(p) }),
+  update: (id: string, p: { status?: string; admin_note?: string }) =>
+    request<SupportTicket>(`/api/support/${id}`, { method: 'PATCH', body: JSON.stringify(p) }),
 };

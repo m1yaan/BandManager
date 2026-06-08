@@ -32,17 +32,20 @@ export default function AuthPage() {
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-[380px] animate-fade-in">
           <div className="flex items-center gap-3 mb-10 lg:hidden">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'var(--accent)' }}>
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center"
+              style={{ background: 'var(--accent)', boxShadow: '0 0 16px var(--accent-glow)' }}
+            >
               <Music2 className="w-4 h-4 text-white" />
             </div>
             <span className="font-bold text-[17px]" style={{ color: 'var(--text-primary)' }}>BandManager</span>
           </div>
 
-          <h2 className="text-[24px] font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="text-[26px] font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary)' }}>
             {mode === 'login' ? 'Добро пожаловать' : 'Регистрация'}
           </h2>
           <p className="text-[14px] mb-8" style={{ color: 'var(--text-secondary)' }}>
-            {mode === 'login' ? 'Войдите в ваш аккаунт' : 'Создайте аккаунт BandManager'}
+            {mode === 'login' ? 'Войдите в ваш аккаунт BandManager' : 'Создайте аккаунт и начните работу'}
           </p>
 
           <div className="flex p-1 rounded-xl mb-6" style={{ background: 'var(--bg-elevated)' }}>
@@ -55,6 +58,7 @@ export default function AuthPage() {
                 style={{
                   background: mode === m ? 'var(--accent)' : 'transparent',
                   color: mode === m ? '#fff' : 'var(--text-secondary)',
+                  boxShadow: mode === m ? '0 0 12px var(--accent-glow)' : 'none',
                 }}
               >
                 {m === 'login'
@@ -98,17 +102,18 @@ export default function AuthPage() {
                 <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Я являюсь</label>
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { value: 'manager', label: 'Менеджером', icon: <Briefcase className="w-4 h-4" />, desc: 'Полный доступ' },
-                    { value: 'artist', label: 'Артистом', icon: <Mic2 className="w-4 h-4" />, desc: 'Просмотр данных' },
+                    { value: 'manager', label: 'Менеджером',    icon: <Briefcase className="w-4 h-4" />, desc: 'Полный доступ' },
+                    { value: 'artist',  label: 'Артистом',      icon: <Mic2 className="w-4 h-4" />,      desc: 'Просмотр данных' },
                   ].map(({ value, label, icon, desc }) => (
                     <button
                       key={value}
                       type="button"
                       onClick={() => setRole(value as UserRole)}
-                      className="p-3 rounded-xl border text-left transition-all"
+                      className="p-3 rounded-xl text-left transition-all"
                       style={{
                         background: role === value ? 'var(--accent-muted)' : 'var(--bg-elevated)',
-                        borderColor: role === value ? 'var(--accent)' : 'var(--border-base)',
+                        border: `1px solid ${role === value ? 'var(--accent)' : 'var(--border-base)'}`,
+                        boxShadow: role === value ? '0 0 8px var(--accent-glow)' : 'none',
                       }}
                     >
                       <div className="flex items-center gap-2 mb-1" style={{ color: role === value ? 'var(--accent)' : 'var(--text-secondary)' }}>
@@ -123,7 +128,7 @@ export default function AuthPage() {
             )}
 
             {error && (
-              <div className="rounded-xl px-4 py-3 text-[13px]" style={{ background: 'var(--error-muted)', color: 'var(--error)' }}>
+              <div className="rounded-xl px-4 py-3 text-[13px]" style={{ background: 'var(--error-muted)', border: '1px solid rgba(248,113,113,0.2)', color: 'var(--error)' }}>
                 {error}
               </div>
             )}

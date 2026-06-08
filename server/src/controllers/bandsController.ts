@@ -2,10 +2,13 @@ import { Response } from 'express';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/auth';
 
-// GET /api/bands
+// GET /api/bands — только свои данные
 export async function getBands(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const result = await db.query('SELECT * FROM band ORDER BY name');
+    const result = await db.query(
+      'SELECT * FROM band WHERE created_by = $1 ORDER BY name',
+      [req.userId]
+    );
     res.json(result.rows);
   } catch (err) {
     console.error('[bands] getBands error:', err);
@@ -13,16 +16,19 @@ export async function getBands(req: AuthRequest, res: Response): Promise<void> {
   }
 }
 
-// GET /api/bands/stats
+// GET /api/bands/stats — только свои данные
 export async function getBandStats(req: AuthRequest, res: Response): Promise<void> {
   try {
     const [bandCount, singerCount, songCount, tourCount, topBands] = await Promise.all([
-      db.query('SELECT COUNT(*) FROM band'),
-      db.query('SELECT COUNT(*) FROM singer'),
-      db.query('SELECT COUNT(*) FROM song'),
-      db.query('SELECT COUNT(*) FROM tour'),
+      db.query('SELECT COUNT(*) FROM band WHERE created_by = $1', [req.userId]),
+      db.query('SELECT COUNT(*) FROM singer WHERE created_by = $1', [req.userId]),
+      db.query('SELECT COUNT(*) FROM song WHERE created_by = $1', [req.userId]),
+      db.query('SELECT COUNT(*) FROM tour WHERE created_by = $1', [req.userId]),
       db.query(
-        'SELECT name, rating, country FROM band WHERE rating IS NOT NULL ORDER BY rating DESC LIMIT 5'
+        `SELECT name, rating, country FROM band
+         WHERE created_by = $1 AND rating IS NOT NULL
+         ORDER BY rating DESC LIMIT 5`,
+        [req.userId]
       ),
     ]);
 
@@ -39,10 +45,20 @@ export async function getBandStats(req: AuthRequest, res: Response): Promise<voi
   }
 }
 
-// GET /api/bands/:id/details
+// GET /api/bands/:id/details — проверяем владельца
 export async function getBandDetails(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
+    // Проверяем доступ
+    const access = await db.query(
+      'SELECT id FROM band WHERE id = $1 AND created_by = $2',
+      [id, req.userId]
+    );
+    if (access.rowCount === 0) {
+      res.status(404).json({ error: 'Группа не найдена' });
+      return;
+    }
+
     const [members, repertoire] = await Promise.all([
       db.query(
         `SELECT s.* FROM singer s
@@ -91,13 +107,13 @@ export async function createBand(req: AuthRequest, res: Response): Promise<void>
     );
     const band = result.rows[0];
 
-    if (memberIds && memberIds.length > 0) {
+    if (memberIds?.length) {
       await client.query(
         `INSERT INTO band_member (band_id, singer_id) SELECT $1, UNNEST($2::uuid[])`,
         [band.id, memberIds]
       );
     }
-    if (songIds && songIds.length > 0) {
+    if (songIds?.length) {
       await client.query(
         `INSERT INTO repertoire (band_id, song_id) SELECT $1, UNNEST($2::uuid[])`,
         [band.id, songIds]
@@ -151,13 +167,13 @@ export async function updateBand(req: AuthRequest, res: Response): Promise<void>
     await client.query('DELETE FROM band_member WHERE band_id = $1', [id]);
     await client.query('DELETE FROM repertoire WHERE band_id = $1', [id]);
 
-    if (memberIds && memberIds.length > 0) {
+    if (memberIds?.length) {
       await client.query(
         `INSERT INTO band_member (band_id, singer_id) SELECT $1, UNNEST($2::uuid[])`,
         [id, memberIds]
       );
     }
-    if (songIds && songIds.length > 0) {
+    if (songIds?.length) {
       await client.query(
         `INSERT INTO repertoire (band_id, song_id) SELECT $1, UNNEST($2::uuid[])`,
         [id, songIds]

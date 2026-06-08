@@ -7,87 +7,40 @@ const SENDER_NAMES = [
   'Андрей Новиков', 'Ольга Морозова', 'Сергей Попов', 'Татьяна Лебедева',
   'Игорь Козлов', 'Наталья Смирнова', 'Владимир Волков', 'Юлия Зайцева',
   'Павел Семёнов', 'Анна Белова', 'Михаил Орлов', 'Светлана Фёдорова',
-  'Роман Васильев', 'Ксения Михайлова', 'Артём Захаров', 'Людмила Соловьёва',
 ];
 
-const SENDER_ROLES = [
-  'Промоутер', 'Организатор', 'Представитель площадки',
-  'Концертный агент', 'Фестиваль',
+const SENDER_ROLES = ['Промоутер', 'Организатор', 'Представитель площадки', 'Концертный агент', 'Фестиваль'];
+const ORGANIZATIONS = ['Клуб 16 Тонн', 'ГлавClub', 'VK Stadium', 'Roof Place', 'Aglomerat', 'Известия Hall', 'Crocus City Hall', 'Stadium Live', 'Клуб Volta', 'A2 Green Concert'];
+const CITIES = ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Нижний Новгород', 'Самара', 'Ростов-на-Дону'];
+const FEES = [50000, 75000, 100000, 150000, 200000, 250000, 300000, 500000];
+
+const TEMPLATES = [
+  (org: string, city: string, fee: number, date: string) =>
+    `Здравствуйте! ${org} приглашает вашу группу выступить ${date} в ${city}. Гонорар ${fee.toLocaleString('ru-RU')} ₽.`,
+  (org: string, city: string, fee: number, date: string) =>
+    `Добрый день. ${org} ищет коллектив на фестиваль в ${city}. Дата: ${date}. Предлагаем ${fee.toLocaleString('ru-RU')} ₽.`,
+  (org: string, city: string, fee: number, date: string) =>
+    `Есть свободная дата ${date} в ${city}. ${org} заинтересован в сотрудничестве. Гонорар ${fee.toLocaleString('ru-RU')} ₽.`,
 ];
 
-const ORGANIZATIONS = [
-  'Клуб 16 Тонн', 'ГлавClub', 'VK Stadium', 'Roof Place', 'Aglomerat',
-  'Известия Hall', 'Crocus City Hall', 'Мегаспорт', 'Олимпийский',
-  'Stadium Live', 'Клуб Volta', 'A2 Green Concert', 'Космонавт',
-  'Зал Чайковского', 'Барвиха Luxury Village', 'Ray Just Arena',
-  'Фестиваль Нашествие', 'Пикник Афиши', 'Дикая Мята', 'Park Live',
-  'Боль Фест', 'Stereoleto', 'Ural Music Night', 'Арт-Овраг',
-];
-
-const CITIES = [
-  'Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань',
-  'Нижний Новгород', 'Челябинск', 'Самара', 'Ростов-на-Дону', 'Уфа',
-  'Красноярск', 'Пермь', 'Воронеж', 'Волгоград', 'Сочи', 'Краснодар',
-  'Тюмень', 'Иркутск', 'Хабаровск', 'Владивосток', 'Минск', 'Алматы',
-];
-
-const FEES = [50000, 75000, 100000, 150000, 200000, 250000, 300000, 500000, 750000, 1000000];
-
-const MESSAGE_TEMPLATES = [
-  (org: string, city: string, fee: number, date: string) =>
-    `Здравствуйте! Мы представляем ${org}. Хотим пригласить вашу группу выступить ${date} в ${city}. Гонорар ${fee.toLocaleString('ru-RU')} ₽. Ждём вашего ответа!`,
-  (org: string, city: string, fee: number, date: string) =>
-    `Добрый день. ${org} ищет коллектив на городской фестиваль в ${city}. Дата: ${date}. Предлагаем ${fee.toLocaleString('ru-RU')} ₽. Рассмотрите наше предложение?`,
-  (org: string, city: string, fee: number, date: string) =>
-    `Приветствую! ${org} приглашает вас выступить в ${city}. Планируемая дата — ${date}. Обсуждаемый гонорар: ${fee.toLocaleString('ru-RU')} ₽. Готовы обсудить детали.`,
-  (org: string, city: string, fee: number, date: string) =>
-    `Уважаемые коллеги, мы — команда ${org}. Есть возможность выступить на нашей площадке в ${city} ${date}. Бюджет: ${fee.toLocaleString('ru-RU')} ₽.`,
-  (org: string, city: string, fee: number, date: string) =>
-    `Есть свободная дата ${date} в ${city}. ${org} заинтересован в сотрудничестве. Гонорар ${fee.toLocaleString('ru-RU')} ₽. Рассмотрите, пожалуйста!`,
-  (org: string, city: string, fee: number, date: string) =>
-    `Мы проводим ежегодный фестиваль в ${city}. ${org} хотел бы видеть вас в лайнапе. Дата: ${date}. Ставка: ${fee.toLocaleString('ru-RU')} ₽.`,
-  (org: string, city: string, fee: number, date: string) =>
-    `Здравствуйте. Клуб ${org} в ${city} ищет хедлайнера на ${date}. Предлагаем ${fee.toLocaleString('ru-RU')} ₽ + технический райдер. Будем рады обсудить.`,
-  (org: string, city: string, fee: number, date: string) =>
-    `Представители ${org} приветствуют вас! Планируем большое мероприятие в ${city} на ${date}. Ваш гонорар составит ${fee.toLocaleString('ru-RU')} ₽.`,
-  (org: string, city: string, fee: number, date: string) =>
-    `${org} приглашает вас на корпоративное мероприятие в ${city}. Дата: ${date}. Все расходы + гонорар ${fee.toLocaleString('ru-RU')} ₽.`,
-  (org: string, city: string, fee: number, date: string) =>
-    `Здравствуйте! Мы организуем open-air в ${city} ${date}. Хотим пригласить вас выступить. Гонорар ${fee.toLocaleString('ru-RU')} ₽ + проживание и перелёт.`,
-];
-
-function randomItem<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function generateRandomDate(): string {
-  const days = Math.floor(Math.random() * 180) + 14;
-  const d = new Date(Date.now() + days * 86400000);
-  return d.toISOString().split('T')[0];
-}
+function randomItem<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 
 function generateMessage(userId: string) {
   const name = randomItem(SENDER_NAMES);
-  const role = randomItem(SENDER_ROLES);
-  const org = randomItem(ORGANIZATIONS);
+  const org  = randomItem(ORGANIZATIONS);
   const city = randomItem(CITIES);
-  const fee = randomItem(FEES);
-  const date = generateRandomDate();
-  const tmpl = randomItem(MESSAGE_TEMPLATES);
-  const text = tmpl(org, city, fee, new Date(date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }));
-
-  return {
-    userId, sender_name: name, sender_role: role, organization: org, city,
-    avatar_url: '', message_text: text, proposed_date: date, proposed_fee: fee,
-  };
+  const fee  = randomItem(FEES);
+  const days = Math.floor(Math.random() * 180) + 14;
+  const date = new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+  const text = randomItem(TEMPLATES)(org, city, fee, new Date(date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }));
+  return { userId, sender_name: name, sender_role: randomItem(SENDER_ROLES), organization: org, city, avatar_url: '', message_text: text, proposed_date: date, proposed_fee: fee };
 }
 
+// GET /api/messages — NEW + DEFERRED (Задача 8)
 export async function getMessages(req: AuthRequest, res: Response): Promise<void> {
   try {
     const result = await db.query(
-      `SELECT * FROM messages
-       WHERE user_id = $1 AND status IN ('new', 'saved')
-       ORDER BY created_at DESC`,
+      `SELECT * FROM messages WHERE user_id=$1 AND status='new' ORDER BY created_at DESC`,
       [req.userId]
     );
     res.json(result.rows);
@@ -97,31 +50,69 @@ export async function getMessages(req: AuthRequest, res: Response): Promise<void
   }
 }
 
+// GET /api/messages/deferred — отложенные (Задача 8)
+export async function getDeferredMessages(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const result = await db.query(
+      `SELECT * FROM messages WHERE user_id=$1 AND status='deferred' ORDER BY created_at DESC`,
+      [req.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[messages] getDeferredMessages:', err);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+}
+
+// GET /api/messages/recent — последние 5 NEW для дашборда (Задача 9)
+export async function getRecentMessages(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const result = await db.query(
+      `SELECT id, sender_name, sender_role, organization, avatar_url, message_text, status, created_at
+       FROM messages
+       WHERE user_id=$1 AND status='new'
+       ORDER BY created_at DESC
+       LIMIT 5`,
+      [req.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[messages] getRecentMessages:', err);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+}
+
+// GET /api/messages/unread-count — Задача 5: реальный счётчик
+export async function getUnreadCount(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const result = await db.query(
+      `SELECT COUNT(*) FROM messages WHERE user_id=$1 AND status='new'`,
+      [req.userId]
+    );
+    res.json({ count: parseInt(result.rows[0].count) });
+  } catch (err) {
+    console.error('[messages] getUnreadCount:', err);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+}
+
+// GET /api/messages/history
 export async function getHistory(req: AuthRequest, res: Response): Promise<void> {
   const { filter = 'all', search = '', sort = 'desc' } = req.query as {
     filter?: string; search?: string; sort?: string;
   };
-
   const statuses: Record<string, string[]> = {
-    all: ['accepted', 'declined', 'saved'],
+    all:      ['accepted', 'declined'],
     accepted: ['accepted'],
     declined: ['declined'],
-    saved: ['saved'],
   };
   const allowedStatuses = statuses[filter] ?? statuses.all;
   const order = sort === 'asc' ? 'ASC' : 'DESC';
-
   try {
     const result = await db.query(
       `SELECT * FROM messages
-       WHERE user_id = $1
-         AND status = ANY($2::text[])
-         AND (
-           $3 = '' OR
-           LOWER(sender_name) LIKE LOWER($3) OR
-           LOWER(organization) LIKE LOWER($3) OR
-           LOWER(message_text) LIKE LOWER($3)
-         )
+       WHERE user_id=$1 AND status=ANY($2::text[])
+         AND ($3='' OR LOWER(sender_name) LIKE LOWER($3) OR LOWER(organization) LIKE LOWER($3) OR LOWER(message_text) LIKE LOWER($3))
        ORDER BY created_at ${order}`,
       [req.userId, allowedStatuses, search ? `%${search}%` : '']
     );
@@ -132,6 +123,7 @@ export async function getHistory(req: AuthRequest, res: Response): Promise<void>
   }
 }
 
+// POST /api/messages/generate
 export async function generateMessages(req: AuthRequest, res: Response): Promise<void> {
   const count = Math.floor(Math.random() * 4) + 1;
   try {
@@ -139,20 +131,14 @@ export async function generateMessages(req: AuthRequest, res: Response): Promise
     for (let i = 0; i < count; i++) {
       const m = generateMessage(req.userId!);
       const r = await db.query(
-        `INSERT INTO messages
-           (user_id, sender_name, sender_role, organization, city, avatar_url, message_text, proposed_date, proposed_fee)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         RETURNING *`,
-        [m.userId, m.sender_name, m.sender_role, m.organization, m.city,
-          m.avatar_url, m.message_text, m.proposed_date, m.proposed_fee]
+        `INSERT INTO messages (user_id, sender_name, sender_role, organization, city, avatar_url, message_text, proposed_date, proposed_fee)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [m.userId, m.sender_name, m.sender_role, m.organization, m.city, m.avatar_url, m.message_text, m.proposed_date, m.proposed_fee]
       );
       created.push(r.rows[0]);
-
       await db.query(
-        `INSERT INTO notifications (user_id, title, message, type, link)
-         VALUES ($1, $2, $3, 'info', '/messages')`,
-        [req.userId, 'Новый концертный запрос',
-          `${m.sender_name} (${m.organization}) — ${m.city}`]
+        `INSERT INTO notifications (user_id, title, message, type, link) VALUES ($1,$2,$3,'info','/messages')`,
+        [req.userId, 'Новый концертный запрос', `${m.sender_name} (${m.organization}) — ${m.city}`]
       );
     }
     res.status(201).json(created);
@@ -162,17 +148,15 @@ export async function generateMessages(req: AuthRequest, res: Response): Promise
   }
 }
 
+// POST /api/messages/:id/accept
 export async function acceptMessage(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   const { bandId } = req.body as { bandId?: string };
-
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-
     const msgResult = await client.query(
-      `UPDATE messages SET status='accepted', updated_at=now()
-       WHERE id=$1 AND user_id=$2 RETURNING *`,
+      `UPDATE messages SET status='accepted', updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING *`,
       [id, req.userId]
     );
     if (msgResult.rowCount === 0) {
@@ -181,31 +165,19 @@ export async function acceptMessage(req: AuthRequest, res: Response): Promise<vo
       return;
     }
     const msg = msgResult.rows[0];
-
     let tour = null;
     if (bandId) {
       const tourResult = await client.query(
         `INSERT INTO tour (program_name, city, start_date, end_date, avg_ticket_price, band_id, created_by, fee)
-         VALUES ($1, $2, $3, $3, 0, $4, $5, $6) RETURNING *`,
-        [
-          `Концерт — ${msg.organization}`,
-          msg.city,
-          msg.proposed_date,
-          bandId,
-          req.userId,
-          msg.proposed_fee,
-        ]
+         VALUES ($1, $2, $3, $3, $4, $5, $6, $4) RETURNING *`,
+        [`Концерт — ${msg.organization}`, msg.city, msg.proposed_date, msg.proposed_fee, bandId, req.userId]
       );
       tour = tourResult.rows[0];
     }
-
     await client.query(
-      `INSERT INTO notifications (user_id, title, message, type, link)
-       VALUES ($1, $2, $3, 'success', '/tours')`,
-      [req.userId, 'Запрос принят',
-        `Тур "${msg.organization}" в ${msg.city} добавлен в расписание`]
+      `INSERT INTO notifications (user_id, title, message, type, link) VALUES ($1,$2,$3,'success','/tours')`,
+      [req.userId, 'Запрос принят', `Тур "${msg.organization}" в ${msg.city} добавлен`]
     );
-
     await client.query('COMMIT');
     res.json({ message: msg, tour });
   } catch (err) {
@@ -217,18 +189,15 @@ export async function acceptMessage(req: AuthRequest, res: Response): Promise<vo
   }
 }
 
+// POST /api/messages/:id/decline
 export async function declineMessage(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
     const result = await db.query(
-      `UPDATE messages SET status='declined', updated_at=now()
-       WHERE id=$1 AND user_id=$2 RETURNING *`,
+      `UPDATE messages SET status='declined', updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING *`,
       [id, req.userId]
     );
-    if (result.rowCount === 0) {
-      res.status(404).json({ error: 'Сообщение не найдено' });
-      return;
-    }
+    if (result.rowCount === 0) { res.status(404).json({ error: 'Сообщение не найдено' }); return; }
     res.json(result.rows[0]);
   } catch (err) {
     console.error('[messages] declineMessage:', err);
@@ -236,42 +205,31 @@ export async function declineMessage(req: AuthRequest, res: Response): Promise<v
   }
 }
 
-export async function saveMessage(req: AuthRequest, res: Response): Promise<void> {
+// POST /api/messages/:id/defer — Задача 8: DEFERRED вместо SAVED
+export async function deferMessage(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
     const result = await db.query(
-      `UPDATE messages SET status='saved', updated_at=now()
-       WHERE id=$1 AND user_id=$2 RETURNING *`,
+      `UPDATE messages SET status='deferred', updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING *`,
       [id, req.userId]
     );
-    if (result.rowCount === 0) {
-      res.status(404).json({ error: 'Сообщение не найдено' });
-      return;
-    }
+    if (result.rowCount === 0) { res.status(404).json({ error: 'Сообщение не найдено' }); return; }
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('[messages] saveMessage:', err);
+    console.error('[messages] deferMessage:', err);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
 }
 
 export async function autoGenerateForAllUsers(): Promise<void> {
   try {
-    const users = await db.query(`SELECT id FROM users WHERE role = 'manager'`);
+    const users = await db.query(`SELECT id FROM users WHERE role IN ('manager', 'admin') AND is_blocked = false`);
     for (const user of users.rows) {
       const m = generateMessage(user.id);
       await db.query(
-        `INSERT INTO messages
-           (user_id, sender_name, sender_role, organization, city, avatar_url, message_text, proposed_date, proposed_fee)
+        `INSERT INTO messages (user_id, sender_name, sender_role, organization, city, avatar_url, message_text, proposed_date, proposed_fee)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [m.userId, m.sender_name, m.sender_role, m.organization, m.city,
-          m.avatar_url, m.message_text, m.proposed_date, m.proposed_fee]
-      );
-      await db.query(
-        `INSERT INTO notifications (user_id, title, message, type, link)
-         VALUES ($1, $2, $3, 'info', '/messages')`,
-        [user.id, 'Новый концертный запрос',
-          `${m.sender_name} (${m.organization}) — ${m.city}`]
+        [m.userId, m.sender_name, m.sender_role, m.organization, m.city, m.avatar_url, m.message_text, m.proposed_date, m.proposed_fee]
       );
     }
   } catch (err) {

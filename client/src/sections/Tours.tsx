@@ -456,7 +456,7 @@ export default function Tours() {
     setForm({
       program_name: tour.program_name, city: tour.city,
       start_date: tour.start_date ?? '', end_date: tour.end_date ?? '',
-      avg_ticket_price: tour.avg_ticket_price?.toString() ?? '', band_id: tour.band_id,
+      avg_ticket_price: tour.avg_ticket_price?.toString() ?? '', band_id: tour.band_id ?? '',
     });
     try { setSelectedSongs((await toursApi.getSongs(tour.id)).map(s => s.id)); }
     catch { setSelectedSongs([]); }

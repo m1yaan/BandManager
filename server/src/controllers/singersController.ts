@@ -2,9 +2,13 @@ import { Response } from 'express';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/auth';
 
+// GET /api/singers — только свои
 export async function getSingers(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const result = await db.query('SELECT * FROM singer ORDER BY name');
+    const result = await db.query(
+      'SELECT * FROM singer WHERE created_by = $1 ORDER BY name',
+      [req.userId]
+    );
     res.json(result.rows);
   } catch (err) {
     console.error('[singers] getSingers error:', err);
@@ -12,6 +16,42 @@ export async function getSingers(req: AuthRequest, res: Response): Promise<void>
   }
 }
 
+// GET /api/singers/:id/bands — группы исполнителя
+export async function getSingerBands(req: AuthRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  try {
+    const result = await db.query(
+      `SELECT b.* FROM band b
+       JOIN band_member bm ON bm.band_id = b.id
+       WHERE bm.singer_id = $1 AND b.created_by = $2`,
+      [id, req.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[singers] getSingerBands error:', err);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+}
+
+// GET /api/singers/:id/songs — песни исполнителя
+export async function getSingerSongs(req: AuthRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  try {
+    const result = await db.query(
+      `SELECT DISTINCT so.* FROM song so
+       JOIN song_singer ss ON ss.song_id = so.id
+       WHERE ss.singer_id = $1 AND so.created_by = $2
+       ORDER BY so.title`,
+      [id, req.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[singers] getSingerSongs error:', err);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+}
+
+// POST /api/singers
 export async function createSinger(req: AuthRequest, res: Response): Promise<void> {
   const { name } = req.body as { name?: string };
   if (!name?.trim()) {
@@ -30,6 +70,7 @@ export async function createSinger(req: AuthRequest, res: Response): Promise<voi
   }
 }
 
+// PUT /api/singers/:id
 export async function updateSinger(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   const { name } = req.body as { name?: string };
@@ -39,7 +80,7 @@ export async function updateSinger(req: AuthRequest, res: Response): Promise<voi
   }
   try {
     const result = await db.query(
-      'UPDATE singer SET name = $1 WHERE id = $2 AND created_by = $3 RETURNING *',
+      'UPDATE singer SET name=$1 WHERE id=$2 AND created_by=$3 RETURNING *',
       [name.trim(), id, req.userId]
     );
     if (result.rowCount === 0) {
@@ -53,11 +94,12 @@ export async function updateSinger(req: AuthRequest, res: Response): Promise<voi
   }
 }
 
+// DELETE /api/singers/:id
 export async function deleteSinger(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
     const result = await db.query(
-      'DELETE FROM singer WHERE id = $1 AND created_by = $2',
+      'DELETE FROM singer WHERE id=$1 AND created_by=$2',
       [id, req.userId]
     );
     if (result.rowCount === 0) {
