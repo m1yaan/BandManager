@@ -3,7 +3,7 @@ import {
   getBands, getBandDetails, createBand, updateBand, deleteBand, getBandStats
 } from '../controllers/bandsController';
 import {
-  getSingers, getSingerBands, getSingerSongs,
+  getSingers, getSinger, getSingerBands, getSingerSongs,
   createSinger, updateSinger, deleteSinger
 } from '../controllers/singersController';
 import {
@@ -34,9 +34,13 @@ import { globalSearch }               from '../controllers/searchController';
 import { getCalendarEvents, checkConflicts } from '../controllers/calendarController';
 import { getFinancials, getRiderAttention } from '../controllers/dashboardController';
 import {
-  getUsers, getUser, updateUser, blockUser, unblockUser, deleteUser, getAdminStats
+  getUsers, getUser, updateUser, blockUser, unblockUser, deleteUser, getAdminStats,
+  getUserBands, getUserSingers, getUserSongs, getUserTours, getUserMessages,
 } from '../controllers/adminController';
 import { getTickets, getTicket, createTicket, updateTicket } from '../controllers/supportController';
+import {
+  getContributors, createContributor, updateContributor, deleteContributor
+} from '../controllers/contributorsController';
 import { authMiddleware, requireAdmin, requireManager } from '../middleware/auth';
 
 const router = Router();
@@ -56,6 +60,7 @@ router.delete('/bands/:id',      requireManager, deleteBand);
 
 // ── Singers ───────────────────────────────────────────────────────────────────
 router.get('/singers',            getSingers);
+router.get('/singers/:id',        getSinger);
 router.get('/singers/:id/bands',  getSingerBands);
 router.get('/singers/:id/songs',  getSingerSongs);
 router.post('/singers',           requireManager, createSinger);
@@ -71,6 +76,12 @@ router.delete('/songs/:id/singers/:singerId', requireManager, removeSongSinger);
 router.post('/songs',                      requireManager, createSong);
 router.put('/songs/:id',                   requireManager, updateSong);
 router.delete('/songs/:id',               requireManager, deleteSong);
+
+// ── Contributors ──────────────────────────────────────────────────────────────
+router.get('/contributors',        getContributors);
+router.post('/contributors',       requireManager, createContributor);
+router.put('/contributors/:id',    requireManager, updateContributor);
+router.delete('/contributors/:id', requireManager, deleteContributor);
 
 // ── Tours ─────────────────────────────────────────────────────────────────────
 router.get('/tours',              getTours);
@@ -131,6 +142,11 @@ router.put('/admin/users/:id',           requireAdmin, updateUser);
 router.post('/admin/users/:id/block',    requireAdmin, blockUser);
 router.post('/admin/users/:id/unblock',  requireAdmin, unblockUser);
 router.delete('/admin/users/:id',        requireAdmin, deleteUser);
+router.get('/admin/users/:id/bands',    requireAdmin, getUserBands);
+router.get('/admin/users/:id/singers',  requireAdmin, getUserSingers);
+router.get('/admin/users/:id/songs',    requireAdmin, getUserSongs);
+router.get('/admin/users/:id/tours',    requireAdmin, getUserTours);
+router.get('/admin/users/:id/messages', requireAdmin, getUserMessages);
 
 // ── Support ───────────────────────────────────────────────────────────────────
 router.get('/support',       getTickets);

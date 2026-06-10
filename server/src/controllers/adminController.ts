@@ -115,6 +115,89 @@ export async function deleteUser(req: AuthRequest, res: Response): Promise<void>
   }
 }
 
+// GET /api/admin/users/:id/bands
+export async function getUserBands(req: AuthRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  try {
+    const result = await db.query(
+      'SELECT * FROM band WHERE created_by=$1 ORDER BY name', [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[admin] getUserBands:', err);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+}
+
+// GET /api/admin/users/:id/singers
+export async function getUserSingers(req: AuthRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  try {
+    const result = await db.query(
+      'SELECT * FROM singer WHERE created_by=$1 ORDER BY name', [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[admin] getUserSingers:', err);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+}
+
+// GET /api/admin/users/:id/songs
+export async function getUserSongs(req: AuthRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  try {
+    const result = await db.query(
+      'SELECT * FROM song WHERE created_by=$1 ORDER BY title', [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[admin] getUserSongs:', err);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+}
+
+// GET /api/admin/users/:id/tours
+export async function getUserTours(req: AuthRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  try {
+    const result = await db.query(
+      `SELECT t.*, row_to_json(b.*) AS band, row_to_json(s.*) AS singer_data
+       FROM tour t
+       LEFT JOIN band b ON b.id = t.band_id
+       LEFT JOIN singer s ON s.id = t.singer_id
+       WHERE t.created_by=$1
+       ORDER BY t.start_date DESC NULLS LAST`,
+      [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[admin] getUserTours:', err);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+}
+
+// GET /api/admin/users/:id/messages
+export async function getUserMessages(req: AuthRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  try {
+    const result = await db.query(
+      `SELECT m.*, b.name AS band_name, s.name AS singer_name
+       FROM messages m
+       LEFT JOIN band b ON b.id = m.band_id
+       LEFT JOIN singer s ON s.id = m.singer_id
+       WHERE m.user_id=$1
+       ORDER BY m.created_at DESC
+       LIMIT 50`,
+      [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[admin] getUserMessages:', err);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+}
+
 // GET /api/admin/stats
 export async function getAdminStats(req: AuthRequest, res: Response): Promise<void> {
   try {

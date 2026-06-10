@@ -21,10 +21,20 @@ export type Section =
   | 'reports' | 'profile' | 'messages' | 'calendar'
   | 'admin' | 'support';
 
+export type NavigateParams = {
+  bandId?: string;
+  singerId?: string;
+  songId?: string;
+  tourId?: string;
+};
+
+export type NavigateFn = (section: Section, params?: NavigateParams) => void;
+
 function AppContent() {
   const { user, loading } = useAuth();
   const { isManager, isAdmin } = usePermissions();
   const [section, setSection] = useState<Section>('dashboard');
+  const [navParams, setNavParams] = useState<NavigateParams>({});
 
   if (loading) {
     return (
@@ -39,19 +49,24 @@ function AppContent() {
 
   if (!user) return <AuthPage />;
 
-  const handleDashboardNavigate = (s: string) => setSection(s as Section);
+  const handleNavigate: NavigateFn = (s, params = {}) => {
+    setSection(s);
+    setNavParams(params);
+  };
+
+  const handleDashboardNavigate = (s: string) => handleNavigate(s as Section);
 
   const renderSection = () => {
     switch (section) {
       case 'dashboard': return <Dashboard onNavigate={handleDashboardNavigate} />;
-      case 'bands':     return <Bands />;
-      case 'singers':   return <Singers />;
-      case 'songs':     return <Songs />;
-      case 'tours':     return <Tours />;
+      case 'bands':     return <Bands onNavigate={handleNavigate} initialBandId={navParams.bandId} />;
+      case 'singers':   return <Singers onNavigate={handleNavigate} initialSingerId={navParams.singerId} />;
+      case 'songs':     return <Songs onNavigate={handleNavigate} />;
+      case 'tours':     return <Tours onNavigate={handleNavigate} />;
       case 'calendar':  return <CalendarPage />;
       case 'messages':  return (isManager || isAdmin) ? <MessagesPage /> : <Dashboard onNavigate={handleDashboardNavigate} />;
       case 'reports':   return (isManager || isAdmin) ? <ReportsPage /> : <Dashboard onNavigate={handleDashboardNavigate} />;
-      case 'admin':     return isAdmin ? <AdminUsersPage /> : <Dashboard onNavigate={handleDashboardNavigate} />;
+      case 'admin':     return isAdmin ? <AdminUsersPage onNavigate={handleNavigate} /> : <Dashboard onNavigate={handleDashboardNavigate} />;
       case 'support':   return <SupportPage />;
       case 'profile':   return <ProfilePage />;
       default:          return <Dashboard onNavigate={handleDashboardNavigate} />;
@@ -59,7 +74,7 @@ function AppContent() {
   };
 
   return (
-    <Layout activeSection={section} onNavigate={setSection}>
+    <Layout activeSection={section} onNavigate={(s) => handleNavigate(s)}>
       {renderSection()}
     </Layout>
   );

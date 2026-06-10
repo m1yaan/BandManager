@@ -25,6 +25,23 @@ export type Band = {
 export type Singer = {
   id: string;
   name: string;
+  country: string;
+  rating: number | null;
+  bio: string;
+  created_by: string;
+  created_at: string;
+  bands?: { id: string; name: string }[];
+  songs?: { id: string; title: string; release_date?: string | null }[];
+  tours?: Tour[];
+  songCount?: number;
+  bandCount?: number;
+  tourCount?: number;
+};
+
+export type Contributor = {
+  id: string;
+  name: string;
+  type: 'COMPOSER' | 'LYRICIST' | 'BOTH';
   created_by: string;
   created_at: string;
 };
@@ -34,9 +51,16 @@ export type Song = {
   title: string;
   composer: string;
   lyricist: string;
+  composer_id: string | null;
+  lyricist_id: string | null;
+  composer_name?: string;
+  lyricist_name?: string;
   creation_year: number | null;
+  release_date: string | null;
   created_by: string;
   created_at: string;
+  singers?: { id: string; name: string }[];
+  bands?: { id: string; name: string }[];
 };
 
 export type Tour = {
@@ -48,6 +72,8 @@ export type Tour = {
   avg_ticket_price: number;
   band_id: string | null;
   band?: Band | null;
+  singer_id: string | null;
+  singer_data?: Singer | null;
   created_by: string;
   created_at: string;
   fee?: number;
@@ -58,6 +84,7 @@ export type Tour = {
   hotel?: number;
   other_expenses?: number;
   city_coefficient?: number;
+  base_ticket_price?: number;
   rider_status?: 'empty' | 'partial' | 'complete';
 };
 
@@ -66,8 +93,22 @@ export type TourStop = {
   tour_id: string;
   city: string;
   event_date: string | null;
-  avg_ticket_price: number;
+  ticket_price: number;
   created_at: string;
+};
+
+export type TourFinances = {
+  fee: number;
+  tax_percent: number;
+  agent_commission_percent: number;
+  transport: number;
+  per_diem: number;
+  hotel: number;
+  other_expenses: number;
+  avg_ticket_price: number;
+  city_coefficient: number;
+  base_ticket_price: number;
+  profit: number;
 };
 
 export type RiderItem = {
@@ -109,6 +150,10 @@ export type Message = {
   proposed_date: string | null;
   proposed_fee: number;
   status: MessageStatus;
+  band_id: string | null;
+  band_name?: string;
+  singer_id: string | null;
+  singer_name?: string;
   created_at: string;
   updated_at: string;
 };
@@ -124,6 +169,13 @@ export type Notification = {
   created_at: string;
 };
 
+export type CalendarStop = {
+  id: string;
+  city: string;
+  event_date: string | null;
+  ticket_price: number;
+};
+
 export type CalendarEvent = {
   id: string;
   title: string;
@@ -133,6 +185,7 @@ export type CalendarEvent = {
   band_name?: string;
   type: 'tour' | 'stop' | 'offer';
   color: string;
+  stops: CalendarStop[];
 };
 
 export type SearchResults = {
@@ -217,14 +270,28 @@ export const bandsApi = {
     request<{ success: boolean }>(`/api/bands/${id}`, { method: 'DELETE' }),
 };
 
+export const contributorsApi = {
+  getAll: (params?: { type?: string; q?: string }) => {
+    const q = params ? new URLSearchParams(params as Record<string, string>).toString() : '';
+    return request<Contributor[]>(`/api/contributors${q ? '?' + q : ''}`);
+  },
+  create: (p: { name: string; type?: string }) =>
+    request<Contributor>('/api/contributors', { method: 'POST', body: JSON.stringify(p) }),
+  update: (id: string, p: { name: string; type?: string }) =>
+    request<Contributor>(`/api/contributors/${id}`, { method: 'PUT', body: JSON.stringify(p) }),
+  delete: (id: string) =>
+    request<{ success: boolean }>(`/api/contributors/${id}`, { method: 'DELETE' }),
+};
+
 export const singersApi = {
   getAll: () => request<Singer[]>('/api/singers'),
+  getOne: (id: string) => request<Singer>(`/api/singers/${id}`),
   getBands: (id: string) => request<Band[]>(`/api/singers/${id}/bands`),
   getSongs: (id: string) => request<Song[]>(`/api/singers/${id}/songs`),
-  create: (name: string) =>
-    request<Singer>('/api/singers', { method: 'POST', body: JSON.stringify({ name }) }),
-  update: (id: string, name: string) =>
-    request<Singer>(`/api/singers/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  create: (p: { name: string; country?: string; rating?: number | null; bio?: string; bandIds?: string[] }) =>
+    request<Singer>('/api/singers', { method: 'POST', body: JSON.stringify(p) }),
+  update: (id: string, p: { name: string; country?: string; rating?: number | null; bio?: string; bandIds?: string[] }) =>
+    request<Singer>(`/api/singers/${id}`, { method: 'PUT', body: JSON.stringify(p) }),
   delete: (id: string) =>
     request<{ success: boolean }>(`/api/singers/${id}`, { method: 'DELETE' }),
 };
@@ -239,10 +306,16 @@ export const songsApi = {
     }),
   removeSinger: (songId: string, singerId: string) =>
     request<{ success: boolean }>(`/api/songs/${songId}/singers/${singerId}`, { method: 'DELETE' }),
-  create: (p: { title: string; composer?: string; lyricist?: string; creation_year?: number | null }) =>
-    request<Song>('/api/songs', { method: 'POST', body: JSON.stringify(p) }),
-  update: (id: string, p: { title: string; composer?: string; lyricist?: string; creation_year?: number | null }) =>
-    request<Song>(`/api/songs/${id}`, { method: 'PUT', body: JSON.stringify(p) }),
+  create: (p: {
+    title: string; composer_id?: string | null; lyricist_id?: string | null;
+    release_date?: string | null; creation_year?: number | null;
+    singerIds?: string[]; bandIds?: string[];
+  }) => request<Song>('/api/songs', { method: 'POST', body: JSON.stringify(p) }),
+  update: (id: string, p: {
+    title: string; composer_id?: string | null; lyricist_id?: string | null;
+    release_date?: string | null; creation_year?: number | null;
+    singerIds?: string[]; bandIds?: string[];
+  }) => request<Song>(`/api/songs/${id}`, { method: 'PUT', body: JSON.stringify(p) }),
   delete: (id: string) =>
     request<{ success: boolean }>(`/api/songs/${id}`, { method: 'DELETE' }),
 };
@@ -250,21 +323,25 @@ export const songsApi = {
 export const toursApi = {
   getAll: () => request<Tour[]>('/api/tours'),
   getSongs: (tourId: string) => request<Song[]>(`/api/tours/${tourId}/songs`),
-  create: (p: { program_name: string; city?: string; start_date?: string | null; end_date?: string | null; avg_ticket_price?: number; band_id?: string | null; songIds?: string[] }) =>
-    request<Tour>('/api/tours', { method: 'POST', body: JSON.stringify(p) }),
-  update: (id: string, p: { program_name: string; city?: string; start_date?: string | null; end_date?: string | null; avg_ticket_price?: number; band_id?: string | null; songIds?: string[] }) =>
-    request<Tour>(`/api/tours/${id}`, { method: 'PUT', body: JSON.stringify(p) }),
+  create: (p: {
+    program_name: string; city?: string; start_date?: string | null; end_date?: string | null;
+    avg_ticket_price?: number; band_id?: string | null; singer_id?: string | null; songIds?: string[];
+  }) => request<Tour>('/api/tours', { method: 'POST', body: JSON.stringify(p) }),
+  update: (id: string, p: {
+    program_name: string; city?: string; start_date?: string | null; end_date?: string | null;
+    avg_ticket_price?: number; band_id?: string | null; singer_id?: string | null; songIds?: string[];
+  }) => request<Tour>(`/api/tours/${id}`, { method: 'PUT', body: JSON.stringify(p) }),
   delete: (id: string) =>
     request<{ success: boolean }>(`/api/tours/${id}`, { method: 'DELETE' }),
   getStops: (tourId: string) => request<TourStop[]>(`/api/tours/${tourId}/stops`),
-  addStop: (tourId: string, p: { city: string; event_date?: string | null; avg_ticket_price?: number }) =>
+  addStop: (tourId: string, p: { city: string; event_date?: string | null; ticket_price?: number }) =>
     request<TourStop>(`/api/tours/${tourId}/stops`, { method: 'POST', body: JSON.stringify(p) }),
-  updateStop: (tourId: string, stopId: string, p: { city: string; event_date?: string | null; avg_ticket_price?: number }) =>
+  updateStop: (tourId: string, stopId: string, p: { city: string; event_date?: string | null; ticket_price?: number }) =>
     request<TourStop>(`/api/tours/${tourId}/stops/${stopId}`, { method: 'PUT', body: JSON.stringify(p) }),
   deleteStop: (tourId: string, stopId: string) =>
     request<{ success: boolean }>(`/api/tours/${tourId}/stops/${stopId}`, { method: 'DELETE' }),
-  getFinances: (tourId: string) => request<Partial<Tour>>(`/api/tours/${tourId}/finances`),
-  updateFinances: (tourId: string, p: Partial<Tour> & { base_price?: number }) =>
+  getFinances: (tourId: string) => request<TourFinances>(`/api/tours/${tourId}/finances`),
+  updateFinances: (tourId: string, p: Partial<TourFinances> & { base_ticket_price?: number }) =>
     request<Tour>(`/api/tours/${tourId}/finances`, { method: 'PUT', body: JSON.stringify(p) }),
   getRider: (tourId: string) => request<RiderItem[]>(`/api/tours/${tourId}/rider`),
   addRiderItem: (tourId: string, p: { item_name: string; status?: string; photo_url?: string; note?: string }) =>
@@ -306,12 +383,14 @@ export const messagesApi = {
     return request<Message[]>(`/api/messages/history${q ? '?' + q : ''}`);
   },
   generate: () => request<Message[]>('/api/messages/generate', { method: 'POST' }),
-  accept: (id: string, bandId?: string) =>
-    request<{ message: Message; tour: Tour | null }>(`/api/messages/${id}/accept`, {
-      method: 'POST', body: JSON.stringify({ bandId }),
-    }),
-  decline: (id: string) => request<Message>(`/api/messages/${id}/decline`, { method: 'POST' }),
-  defer: (id: string) => request<Message>(`/api/messages/${id}/defer`, { method: 'POST' }),
+  accept: (id: string) =>
+    request<{ message: Message; tour: Tour | null; unreadCount: number }>(
+      `/api/messages/${id}/accept`, { method: 'POST', body: JSON.stringify({}) }
+    ),
+  decline: (id: string) =>
+    request<{ message: Message; unreadCount: number }>(`/api/messages/${id}/decline`, { method: 'POST' }),
+  defer: (id: string) =>
+    request<{ message: Message; unreadCount: number }>(`/api/messages/${id}/defer`, { method: 'POST' }),
 };
 
 export const notificationsApi = {
@@ -344,6 +423,11 @@ export const adminApi = {
   blockUser: (id: string) => request<User>(`/api/admin/users/${id}/block`, { method: 'POST' }),
   unblockUser: (id: string) => request<User>(`/api/admin/users/${id}/unblock`, { method: 'POST' }),
   deleteUser: (id: string) => request<{ success: boolean }>(`/api/admin/users/${id}`, { method: 'DELETE' }),
+  getUserBands: (id: string) => request<Band[]>(`/api/admin/users/${id}/bands`),
+  getUserSingers: (id: string) => request<Singer[]>(`/api/admin/users/${id}/singers`),
+  getUserSongs: (id: string) => request<Song[]>(`/api/admin/users/${id}/songs`),
+  getUserTours: (id: string) => request<Tour[]>(`/api/admin/users/${id}/tours`),
+  getUserMessages: (id: string) => request<Message[]>(`/api/admin/users/${id}/messages`),
 };
 
 export const supportApi = {

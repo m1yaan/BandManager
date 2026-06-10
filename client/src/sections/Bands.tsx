@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { bandsApi, singersApi, songsApi, Band, Singer, Song } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { NavigateFn } from '../App';
 import Modal from '../components/Modal';
 import { EmptyState } from '../components/EmptyState';
 import { Tooltip } from '../components/Tooltip';
@@ -11,7 +12,12 @@ import { toast } from 'sonner';
 
 type BandWithDetails = Band & { members?: Singer[]; repertoire?: Song[] };
 
-export default function Bands() {
+type Props = {
+  onNavigate: NavigateFn;
+  initialBandId?: string;
+};
+
+export default function Bands({ onNavigate, initialBandId: _initialBandId }: Props) {
   const { user } = useAuth();
   const [bands, setBands] = useState<BandWithDetails[]>([]);
   const [singers, setSingers] = useState<Singer[]>([]);
@@ -149,7 +155,7 @@ export default function Bands() {
                     {[band.country, band.foundation_year && `Осн. ${band.foundation_year}`].filter(Boolean).join(' · ') || 'Нет данных'}
                   </p>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="relative z-10 flex items-center gap-1.5 flex-shrink-0">
                   {band.created_by === user?.id && (
                     <>
                       <Tooltip label="Редактировать">
@@ -182,7 +188,14 @@ export default function Bands() {
                     {band.members && band.members.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {band.members.map(m => (
-                          <span key={m.id} className="badge" style={{ background: 'rgba(52,211,153,0.1)', color: '#34d399' }}>{m.name}</span>
+                          <button
+                            key={m.id}
+                            onClick={() => onNavigate('singers', { singerId: m.id })}
+                            className="badge transition-colors hover:opacity-80"
+                            style={{ background: 'rgba(52,211,153,0.1)', color: '#34d399', cursor: 'pointer' }}
+                          >
+                            {m.name}
+                          </button>
                         ))}
                       </div>
                     ) : <p className="text-[13px]" style={{ color: 'var(--text-tertiary)' }}>Состав не указан</p>}

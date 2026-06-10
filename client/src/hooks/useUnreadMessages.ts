@@ -2,35 +2,42 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { messagesApi } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
+type Listener = (count: number) => void;
+const listeners = new Set<Listener>();
+let globalCount = 0;
+
+export function notifyUnreadCountChange(count: number) {
+  globalCount = count;
+  listeners.forEach(l => l(count));
+}
+
 export function useUnreadMessages() {
   const { user, isManager, isAdmin } = useAuth();
-  const [count, setCount] = useState(0);
+  const [count, setCount] = useState(globalCount);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchCount = useCallback(async () => {
-    // Задача 5: только для manager/admin, только реальные данные
     if (!user || (!isManager && !isAdmin)) return;
     try {
       const data = await messagesApi.getUnreadCount();
-      setCount(data.count);
-    } catch {
-      // Не ломаем интерфейс если endpoint недоступен
-    }
+      notifyUnreadCountChange(data.count);
+    } catch { /* silent */ }
   }, [user, isManager, isAdmin]);
 
   useEffect(() => {
+    const listener: Listener = (c) => setCount(c);
+    listeners.add(listener);
+
     fetchCount();
-    // Обновляем каждые 30 секунд
     intervalRef.current = setInterval(fetchCount, 30_000);
+
     return () => {
+      listeners.delete(listener);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchCount]);
 
-  // Принудительное обновление при открытии Inbox
-  const refresh = useCallback(() => {
-    fetchCount();
-  }, [fetchCount]);
+  const refresh = useCallback(() => { fetchCount(); }, [fetchCount]);
 
   return { count, refresh };
 }

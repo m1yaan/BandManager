@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { messagesApi, bandsApi, Message, Band } from '../lib/api';
+import { messagesApi, bandsApi, singersApi, Message } from '../lib/api';
 import { useAutoMessages } from '../hooks/useAutoMessages';
-import { useUnreadMessages } from '../hooks/useUnreadMessages';
+import { useUnreadMessages, notifyUnreadCountChange } from '../hooks/useUnreadMessages';
 import Modal from '../components/Modal';
 import { EmptyState } from '../components/EmptyState';
 import { toast } from 'sonner';
 import {
   MessageSquare, Sparkles, CheckCircle2, XCircle,
   Clock, MapPin, DollarSign, User, Building2, History, Bookmark,
-  Search, SortAsc, SortDesc, RefreshCw, Settings,
+  Search, SortAsc, SortDesc, RefreshCw, Settings, Music2, Mic2,
 } from 'lucide-react';
 
 type AutoInterval = 0 | 15 | 30 | 60;
@@ -87,6 +87,16 @@ function MessageCard({
               {message.sender_name}
             </p>
             <StatusBadge status={message.status} />
+            {message.band_name && (
+              <span className="badge" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
+                🎸 {message.band_name}
+              </span>
+            )}
+            {message.singer_name && !message.band_name && (
+              <span className="badge" style={{ background: 'rgba(52,211,153,0.1)', color: '#34d399' }}>
+                🎤 {message.singer_name}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
             <span className="text-[12.5px] flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
@@ -155,7 +165,7 @@ export default function MessagesPage() {
   const [messages, setMessages]   = useState<Message[]>([]);
   const [deferred, setDeferred]   = useState<Message[]>([]);
   const [history, setHistory]     = useState<Message[]>([]);
-  const [bands, setBands]         = useState<Band[]>([]);
+  const [hasEntities, setHasEntities] = useState(false);
   const [loading, setLoading]     = useState(true);
   const [generating, setGenerating] = useState(false);
   const [histFilter, setHistFilter] = useState('all');
@@ -164,7 +174,6 @@ export default function MessagesPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [autoInterval, setAutoInterval] = useState<AutoInterval>(0);
   const [acceptTarget, setAcceptTarget] = useState<Message | null>(null);
-  const [selectedBandId, setSelectedBandId] = useState('');
 
   const { refresh: refreshUnread } = useUnreadMessages();
 
@@ -192,7 +201,9 @@ export default function MessagesPage() {
 
   useEffect(() => {
     fetchMessages();
-    bandsApi.getAll().then(setBands).catch(console.error);
+    Promise.all([bandsApi.getAll(), singersApi.getAll()])
+      .then(([bands, singers]) => setHasEntities(bands.length > 0 || singers.length > 0))
+      .catch(console.error);
   }, [fetchMessages]);
 
   useEffect(() => { if (tab === 'deferred') fetchDeferred(); }, [tab, fetchDeferred]);
@@ -206,23 +217,27 @@ export default function MessagesPage() {
       const created = await messagesApi.generate();
       toast.success(`Сгенерировано ${created.length} сообщений`);
       await fetchMessages();
-    } catch { toast.error('Ошибка генерации'); }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка генерации');
+    }
     finally { setGenerating(false); }
   };
 
   const handleAccept = async () => {
     if (!acceptTarget) return;
     try {
-      const { tour } = await messagesApi.accept(acceptTarget.id, selectedBandId || undefined);
-      toast.success(tour ? `Принято. Тур "${tour.program_name}" создан` : 'Запрос принят');
-      setAcceptTarget(null); setSelectedBandId('');
+      const result = await messagesApi.accept(acceptTarget.id);
+      notifyUnreadCountChange(result.unreadCount);
+      toast.success(result.tour ? `Принято. Тур "${result.tour.program_name}" создан` : 'Запрос принят');
+      setAcceptTarget(null);
       await fetchMessages();
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
   };
 
   const handleDecline = async (m: Message) => {
     try {
-      await messagesApi.decline(m.id);
+      const result = await messagesApi.decline(m.id);
+      notifyUnreadCountChange(result.unreadCount);
       toast.success('Запрос отклонён');
       await fetchMessages();
       if (tab === 'deferred') await fetchDeferred();
@@ -231,7 +246,8 @@ export default function MessagesPage() {
 
   const handleDefer = async (m: Message) => {
     try {
-      await messagesApi.defer(m.id);
+      const result = await messagesApi.defer(m.id);
+      notifyUnreadCountChange(result.unreadCount);
       toast.success('Запрос отложен');
       await fetchMessages();
     } catch { toast.error('Ошибка'); }
@@ -336,9 +352,11 @@ export default function MessagesPage() {
           <EmptyState
             icon={<MessageSquare className="w-5 h-5" />}
             title="Нет новых запросов"
-            description="Нажмите «Сгенерировать», чтобы получить новые предложения"
+            description={!hasEntities
+              ? 'Создайте группу или исполнителя, чтобы получать концертные запросы'
+              : 'Нажмите «Сгенерировать», чтобы получить новые предложения'}
             action={
-              <button onClick={handleGenerate} disabled={generating} className="btn btn-primary">
+              <button onClick={handleGenerate} disabled={generating || !hasEntities} className="btn btn-primary">
                 <Sparkles className="w-4 h-4" />
                 Сгенерировать запросы
               </button>
@@ -447,11 +465,11 @@ export default function MessagesPage() {
         <Modal
           title="Принять запрос"
           subtitle={`${acceptTarget.sender_name} — ${acceptTarget.organization}`}
-          onClose={() => { setAcceptTarget(null); setSelectedBandId(''); }}
+          onClose={() => setAcceptTarget(null)}
           size="sm"
           footer={
             <div className="flex justify-end gap-3">
-              <button onClick={() => { setAcceptTarget(null); setSelectedBandId(''); }} className="btn btn-ghost">Отмена</button>
+              <button onClick={() => setAcceptTarget(null)} className="btn btn-ghost">Отмена</button>
               <button onClick={handleAccept} className="btn btn-primary">
                 <CheckCircle2 className="w-4 h-4" />
                 Принять и создать тур
@@ -460,13 +478,21 @@ export default function MessagesPage() {
           }
         >
           <div className="space-y-4">
-            <p className="text-[13.5px]" style={{ color: 'var(--text-secondary)' }}>
-              Выберите группу для создания тура:
-            </p>
-            <select className="input-base" value={selectedBandId} onChange={e => setSelectedBandId(e.target.value)}>
-              <option value="">Без группы (только принять)</option>
-              {bands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
+            <div className="p-3 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
+              <p className="text-[13px] mb-1" style={{ color: 'var(--text-secondary)' }}>Запрос для:</p>
+              {acceptTarget.band_name && (
+                <div className="flex items-center gap-2 text-[14px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                  <Music2 className="w-4 h-4" style={{ color: 'var(--accent)' }} />
+                  Группа: {acceptTarget.band_name}
+                </div>
+              )}
+              {acceptTarget.singer_name && !acceptTarget.band_name && (
+                <div className="flex items-center gap-2 text-[14px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                  <Mic2 className="w-4 h-4" style={{ color: '#34d399' }} />
+                  Исполнитель: {acceptTarget.singer_name}
+                </div>
+              )}
+            </div>
             {acceptTarget.proposed_date && (
               <div className="p-3 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
                 <div className="flex justify-between text-[13px]">
