@@ -8,7 +8,7 @@ const SENDER_NAMES = [
   'Игорь Козлов', 'Наталья Смирнова', 'Владимир Волков', 'Юлия Зайцева',
 ];
 const SENDER_ROLES = ['Промоутер', 'Организатор', 'Представитель площадки', 'Концертный агент'];
-const ORGANIZATIONS = ['Клуб 16 Тонн', 'ГлавClub', 'VK Stadium', 'Roof Place', 'Известия Hall', 'Crocus City Hall'];
+const ORGANIZATIONS = ['Клуб 16 Тонн', 'ГлавClub', 'VK Stadium', 'Roof Place', 'Известия Hall'];
 const CITIES = ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Нижний Новгород'];
 const FEES = [50000, 75000, 100000, 150000, 200000, 250000, 300000, 500000];
 
@@ -217,8 +217,8 @@ export async function acceptMessage(req: AuthRequest, res: Response): Promise<vo
     }
     const msg = msgResult.rows[0];
 
-    const bandId = msg.band_id;
-    const singerId = msg.singer_id;
+    const bandId: string | null = msg.band_id ?? null;
+    const singerId: string | null = msg.singer_id ?? null;
 
     if (!bandId && !singerId) {
       await client.query('ROLLBACK');
@@ -228,11 +228,27 @@ export async function acceptMessage(req: AuthRequest, res: Response): Promise<vo
 
     let rating = 5;
     if (bandId) {
-      const bandData = await client.query('SELECT rating FROM band WHERE id=$1', [bandId]);
-      rating = parseFloat(bandData.rows[0]?.rating ?? '5') || 5;
+      const bandCheck = await client.query(
+        'SELECT rating FROM band WHERE id=$1 AND created_by=$2',
+        [bandId, req.userId]
+      );
+      if (bandCheck.rowCount === 0) {
+        await client.query('ROLLBACK');
+        res.status(403).json({ error: 'Группа не найдена' });
+        return;
+      }
+      rating = parseFloat(bandCheck.rows[0]?.rating ?? '5') || 5;
     } else if (singerId) {
-      const singerData = await client.query('SELECT rating FROM singer WHERE id=$1', [singerId]);
-      rating = parseFloat(singerData.rows[0]?.rating ?? '5') || 5;
+      const singerCheck = await client.query(
+        'SELECT rating FROM singer WHERE id=$1 AND created_by=$2',
+        [singerId, req.userId]
+      );
+      if (singerCheck.rowCount === 0) {
+        await client.query('ROLLBACK');
+        res.status(403).json({ error: 'Исполнитель не найден' });
+        return;
+      }
+      rating = parseFloat(singerCheck.rows[0]?.rating ?? '5') || 5;
     }
 
     const basePrice = 1000;
@@ -241,12 +257,13 @@ export async function acceptMessage(req: AuthRequest, res: Response): Promise<vo
 
     const tourResult = await client.query(
       `INSERT INTO tour
-         (program_name, city, start_date, end_date, avg_ticket_price,
-          band_id, singer_id, created_by, fee, city_coefficient)
-       VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+         (program_name, city, venue, start_date, end_date, avg_ticket_price,
+          band_id, singer_id, created_by, fee, city_coefficient, type)
+       VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10, 'concert') RETURNING *`,
       [
         `Концерт — ${msg.organization}`,
         msg.city,
+        msg.organization,
         msg.proposed_date,
         avgTicketPrice,
         bandId || null,

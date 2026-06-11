@@ -5,8 +5,14 @@ import { toast } from 'sonner';
 import { User, Mail, Calendar, Save, Music2, Mic2, Radio, MapPin } from 'lucide-react';
 import { dashboardApi } from '../lib/api';
 
+const ROLE_LABELS: Record<string, string> = {
+  manager: 'Менеджер',
+  artist: 'Артист',
+  admin: 'Администратор',
+};
+
 export default function ProfilePage() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, role } = useAuth();
   const [name, setName] = useState(user?.name ?? '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url ?? '');
   const [saving, setSaving] = useState(false);
@@ -70,7 +76,9 @@ export default function ProfilePage() {
             <p className="font-semibold text-[16px]" style={{ color: 'var(--text-primary)' }}>
               {name || user?.email?.split('@')[0]}
             </p>
-            <p className="text-[13px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>Менеджер</p>
+            <p className="text-[13px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+              {ROLE_LABELS[role] ?? role}
+            </p>
             <div className="flex items-center gap-1.5 mt-2 text-[12px]" style={{ color: 'var(--text-tertiary)' }}>
               <Calendar className="w-3.5 h-3.5" />
               В системе с {memberSince}

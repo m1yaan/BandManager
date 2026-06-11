@@ -17,10 +17,15 @@ export function useNotifications() {
   }, [user]);
 
   useEffect(() => {
+    if (!user) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
     fetchAll();
     const interval = setInterval(fetchAll, 30_000);
     return () => clearInterval(interval);
-  }, [fetchAll]);
+  }, [fetchAll, user]);
 
   const markRead = async (id: string) => {
     await notificationsApi.markRead(id);

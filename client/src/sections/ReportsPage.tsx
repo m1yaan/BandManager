@@ -31,6 +31,28 @@ function ReportCard({
   );
 }
 
+const DATE_KEYS = new Set(['start_date', 'end_date', 'release_date']);
+
+function formatDateValue(value: string | number | null): string {
+  if (value == null || value === '') return '—';
+  const raw = String(value);
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const [, y, m, d] = match;
+    return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString('ru-RU', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
+  }
+  return raw;
+}
+
+function formatCell(key: string, value: string | number | null | string[]): string {
+  if (value == null || value === '') return '—';
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
+  if (DATE_KEYS.has(key)) return formatDateValue(value);
+  return String(value);
+}
+
 function ResultTable({ data }: { data: ReportResult }) {
   if (!data.length) return (
     <p className="text-[13px]" style={{ color: 'var(--text-tertiary)' }}>Нет данных</p>
@@ -38,9 +60,10 @@ function ResultTable({ data }: { data: ReportResult }) {
 
   const keys = Object.keys(data[0]);
   const LABELS: Record<string, string> = {
-    title: 'Название', composer: 'Композитор', creation_year: 'Год',
+    title: 'Название', composer: 'Композитор', composer_name: 'Композитор',
+    creation_year: 'Год', release_date: 'Дата выпуска',
     name: 'Название', country: 'Страна', rating: 'Рейтинг',
-    lyricist: 'Поэт', bands: 'Группы', band_name: 'Группа',
+    lyricist: 'Поэт', lyricist_name: 'Поэт', bands: 'Группы', band_name: 'Группа',
     program_name: 'Программа', city: 'Город', start_date: 'Начало',
     end_date: 'Конец', avg_ticket_price: 'Цена билета',
   };
@@ -62,7 +85,7 @@ function ResultTable({ data }: { data: ReportResult }) {
             <tr key={i} className="table-row-hover transition-colors" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
               {keys.map(k => (
                 <td key={k} className="px-3 py-2.5 text-[13px]" style={{ color: 'var(--text-secondary)' }}>
-                  {Array.isArray(row[k]) ? (row[k] as string[]).join(', ') : (row[k] ?? '—')?.toString()}
+                  {formatCell(k, row[k] as string | number | null | string[])}
                 </td>
               ))}
             </tr>
@@ -206,7 +229,7 @@ export default function ReportsPage() {
         </ReportCard>
 
         {/* 6. Песни исполнителя */}
-        <ReportCard icon={<Mic2 className="w-4 h-4" />} title="6. Песни исполнителя" description="Все песни из репертуара групп, в которых участвует исполнитель">
+        <ReportCard icon={<Mic2 className="w-4 h-4" />} title="6. Песни исполнителя" description="Все песни, привязанные к исполнителю напрямую">
           <div className="flex gap-2 mb-4">
             <select className="input-base flex-1" style={{ padding: '8px 12px', fontSize: 13 }} value={sel6} onChange={e => setSel6(e.target.value)}>
               <option value="">Выберите исполнителя</option>

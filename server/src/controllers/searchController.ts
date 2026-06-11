@@ -17,19 +17,20 @@ export async function globalSearch(req: AuthRequest, res: Response): Promise<voi
     const [bands, singers, songs, tours, messages] = await Promise.all([
       db.query(
         `SELECT id, name, country, rating FROM band
-         WHERE LOWER(name) LIKE LOWER($1) LIMIT 5`,
-        [pattern]
+         WHERE created_by = $2 AND LOWER(name) LIKE LOWER($1) LIMIT 5`,
+        [pattern, req.userId]
       ),
       db.query(
         `SELECT id, name FROM singer
-         WHERE LOWER(name) LIKE LOWER($1) LIMIT 5`,
-        [pattern]
+         WHERE created_by = $2 AND LOWER(name) LIKE LOWER($1) LIMIT 5`,
+        [pattern, req.userId]
       ),
       db.query(
         `SELECT id, title, composer FROM song
-         WHERE LOWER(title) LIKE LOWER($1)
-            OR LOWER(composer) LIKE LOWER($1) LIMIT 5`,
-        [pattern]
+         WHERE created_by = $2
+           AND (LOWER(title) LIKE LOWER($1) OR LOWER(composer) LIKE LOWER($1))
+         LIMIT 5`,
+        [pattern, req.userId]
       ),
       db.query(
         `SELECT id, program_name, city, start_date FROM tour

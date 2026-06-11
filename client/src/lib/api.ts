@@ -63,13 +63,18 @@ export type Song = {
   bands?: { id: string; name: string }[];
 };
 
+export type TourType = 'tour' | 'concert';
+
 export type Tour = {
   id: string;
   program_name: string;
+  type: TourType;
   city: string;
+  venue: string;
   start_date: string | null;
   end_date: string | null;
   avg_ticket_price: number;
+  stops_count?: number;
   band_id: string | null;
   band?: Band | null;
   singer_id: string | null;
@@ -92,6 +97,7 @@ export type TourStop = {
   id: string;
   tour_id: string;
   city: string;
+  venue: string;
   event_date: string | null;
   ticket_price: number;
   created_at: string;
@@ -169,23 +175,18 @@ export type Notification = {
   created_at: string;
 };
 
-export type CalendarStop = {
-  id: string;
-  city: string;
-  event_date: string | null;
-  ticket_price: number;
-};
-
 export type CalendarEvent = {
   id: string;
+  tour_id?: string | null;
   title: string;
   city: string;
+  venue?: string;
   start_date: string;
   end_date: string | null;
-  band_name?: string;
-  type: 'tour' | 'stop' | 'offer';
+  band_name?: string | null;
+  singer_name?: string | null;
+  type: 'concert' | 'stop' | 'offer';
   color: string;
-  stops: CalendarStop[];
 };
 
 export type SearchResults = {
@@ -222,7 +223,10 @@ export type RiderAttentionItem = {
   city: string;
   start_date: string | null;
   rider_status: 'empty' | 'partial' | 'complete';
+  band_id: string | null;
+  singer_id: string | null;
   band_name: string | null;
+  singer_name: string | null;
 };
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -324,19 +328,21 @@ export const toursApi = {
   getAll: () => request<Tour[]>('/api/tours'),
   getSongs: (tourId: string) => request<Song[]>(`/api/tours/${tourId}/songs`),
   create: (p: {
-    program_name: string; city?: string; start_date?: string | null; end_date?: string | null;
+    type?: TourType; program_name: string; city?: string; venue?: string;
+    start_date?: string | null; end_date?: string | null;
     avg_ticket_price?: number; band_id?: string | null; singer_id?: string | null; songIds?: string[];
   }) => request<Tour>('/api/tours', { method: 'POST', body: JSON.stringify(p) }),
   update: (id: string, p: {
-    program_name: string; city?: string; start_date?: string | null; end_date?: string | null;
+    type?: TourType; program_name: string; city?: string; venue?: string;
+    start_date?: string | null; end_date?: string | null;
     avg_ticket_price?: number; band_id?: string | null; singer_id?: string | null; songIds?: string[];
   }) => request<Tour>(`/api/tours/${id}`, { method: 'PUT', body: JSON.stringify(p) }),
   delete: (id: string) =>
     request<{ success: boolean }>(`/api/tours/${id}`, { method: 'DELETE' }),
   getStops: (tourId: string) => request<TourStop[]>(`/api/tours/${tourId}/stops`),
-  addStop: (tourId: string, p: { city: string; event_date?: string | null; ticket_price?: number }) =>
+  addStop: (tourId: string, p: { city: string; venue?: string; event_date?: string | null; ticket_price?: number }) =>
     request<TourStop>(`/api/tours/${tourId}/stops`, { method: 'POST', body: JSON.stringify(p) }),
-  updateStop: (tourId: string, stopId: string, p: { city: string; event_date?: string | null; ticket_price?: number }) =>
+  updateStop: (tourId: string, stopId: string, p: { city: string; venue?: string; event_date?: string | null; ticket_price?: number }) =>
     request<TourStop>(`/api/tours/${tourId}/stops/${stopId}`, { method: 'PUT', body: JSON.stringify(p) }),
   deleteStop: (tourId: string, stopId: string) =>
     request<{ success: boolean }>(`/api/tours/${tourId}/stops/${stopId}`, { method: 'DELETE' }),
@@ -354,22 +360,22 @@ export const toursApi = {
 
 export const reportsApi = {
   songsByBandTours: (bandId: string) =>
-    request<{ title: string; composer: string; creation_year: number | null }[]>(
+    request<{ title: string; composer_name: string; release_date: string | null }[]>(
       `/api/reports/songs-by-band-tours?bandId=${bandId}`),
   bandsByComposer: (composer: string) =>
     request<{ name: string; country: string; rating: number | null }[]>(
       `/api/reports/bands-by-composer?composer=${encodeURIComponent(composer)}`),
   songInfo: (title: string) =>
-    request<{ title: string; composer: string; lyricist: string; creation_year: number | null; bands: string[] }[]>(
+    request<{ title: string; composer_name: string; lyricist_name: string; release_date: string | null; bands: string[] }[]>(
       `/api/reports/song-info?title=${encodeURIComponent(title)}`),
   topBandRepertoire: () =>
-    request<{ title: string; composer: string; band_name: string; rating: number }[]>(
+    request<{ title: string; composer_name: string; lyricist_name: string; release_date: string | null; band_name: string; rating: number }[]>(
       '/api/reports/top-band-repertoire'),
   toursByBand: (bandId: string) =>
     request<{ program_name: string; city: string; start_date: string | null; end_date: string | null; avg_ticket_price: number }[]>(
       `/api/reports/tours-by-band?bandId=${bandId}`),
   songsBySinger: (singerId: string) =>
-    request<{ title: string; composer: string; band_name: string }[]>(
+    request<{ title: string; composer_name: string; release_date: string | null }[]>(
       `/api/reports/songs-by-singer?singerId=${singerId}`),
 };
 
@@ -408,8 +414,18 @@ export const calendarApi = {
     const q = year && month ? `?year=${year}&month=${month}` : '';
     return request<{ events: CalendarEvent[] }>(`/api/calendar${q}`);
   },
-  checkConflicts: (params: { startDate: string; endDate?: string; bandId: string; tourId?: string }) => {
-    const q = new URLSearchParams(params as Record<string, string>).toString();
+  checkConflicts: (params: {
+    startDate: string;
+    endDate?: string;
+    bandId?: string;
+    singerId?: string;
+    tourId?: string;
+  }) => {
+    const q = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(params).filter(([, v]) => v != null && v !== '') as [string, string][]
+      )
+    ).toString();
     return request<{ conflicts: Tour[] }>(`/api/calendar/conflicts?${q}`);
   },
 };

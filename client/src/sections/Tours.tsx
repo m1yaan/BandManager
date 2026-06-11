@@ -1,5 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
-import { toursApi, bandsApi, singersApi, songsApi, Tour, Band, Singer, Song, TourStop, RiderItem } from '../lib/api';
+import {
+  toursApi, bandsApi, singersApi, songsApi,
+  Tour, TourType, Band, Singer, Song, TourStop, RiderItem,
+} from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { NavigateFn } from '../App';
 import Modal from '../components/Modal';
@@ -9,15 +12,25 @@ import { SkeletonList } from '../components/Skeleton';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   Plus, Pencil, Trash2, MapPin, Calendar, ChevronDown, ChevronUp, Music,
-  Music2, Mic2, Ticket, Settings, CheckCircle2, AlertCircle, Clock, X, DollarSign,
+  Music2, Mic2, Ticket, Settings, CheckCircle2, AlertCircle, Clock, X, DollarSign, Route,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 type TourWithDetails = Tour & { tourSongs?: Song[]; stops?: TourStop[]; rider?: RiderItem[] };
 type OwnerType = 'band' | 'singer';
+type EventKind = TourType;
+
+const isTour = (t: Pick<Tour, 'type'>) => t.type === 'tour';
 
 const formatDate = (d: string | null) => {
   if (!d) return '—';
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const [, y, mo, day] = m;
+    return new Date(Number(y), Number(mo) - 1, Number(day)).toLocaleDateString('ru-RU', {
+      day: 'numeric', month: 'short', year: 'numeric',
+    });
+  }
   return new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
@@ -35,14 +48,17 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
   problem:   <AlertCircle className="w-3.5 h-3.5" />,
 };
 
-// TourExpandedPanel без изменений кроме ticket_price (уже исправлено в прошлой сессии)
-// Вставляем полную версию компонента:
-function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: boolean }) {
-  const [tab, setTab] = useState<'setlist' | 'stops' | 'rider' | 'finances'>('setlist');
+function TourExpandedPanel({ tour, isOwner, onTourUpdated }: {
+  tour: TourWithDetails;
+  isOwner: boolean;
+  onTourUpdated: () => void;
+}) {
+  const tourMode = isTour(tour);
+  const [tab, setTab] = useState<'setlist' | 'stops' | 'details' | 'rider' | 'finances'>('setlist');
   const [stops, setStops] = useState<TourStop[]>(tour.stops ?? []);
   const [rider, setRider] = useState<RiderItem[]>(tour.rider ?? []);
   const [finances, setFinances] = useState<Partial<Tour> & { profit?: number }>({});
-  const [newStop, setNewStop] = useState({ city: '', event_date: '', ticket_price: '' });
+  const [newStop, setNewStop] = useState({ city: '', venue: '', event_date: '', ticket_price: '' });
   const [newRiderItem, setNewRiderItem] = useState('');
   const [editingFinances, setEditingFinances] = useState(false);
   const [finForm, setFinForm] = useState({
@@ -51,8 +67,15 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
     base_ticket_price: '', city_coefficient: '',
   });
 
+  const TABS = [
+    { id: 'setlist' as const, label: 'Сет-лист' },
+    ...(tourMode ? [{ id: 'stops' as const, label: 'Города' }] : [{ id: 'details' as const, label: 'Детали' }]),
+    { id: 'rider' as const, label: 'Райдер' },
+    { id: 'finances' as const, label: 'Финансы' },
+  ];
+
   useEffect(() => {
-    if (tab === 'stops' && !tour.stops) {
+    if (tab === 'stops' && tourMode && !tour.stops) {
       toursApi.getStops(tour.id).then(setStops).catch(console.error);
     }
     if (tab === 'rider' && !tour.rider) {
@@ -74,18 +97,20 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
         });
       }).catch(console.error);
     }
-  }, [tab, tour.id, tour.stops, tour.rider]);
+  }, [tab, tour.id, tour.stops, tour.rider, tourMode]);
 
   const addStop = async () => {
     if (!newStop.city.trim()) return;
     try {
       const stop = await toursApi.addStop(tour.id, {
         city: newStop.city.trim(),
+        venue: newStop.venue.trim(),
         event_date: newStop.event_date || null,
         ticket_price: newStop.ticket_price ? parseFloat(newStop.ticket_price) : 0,
       });
       setStops(prev => [...prev, stop]);
-      setNewStop({ city: '', event_date: '', ticket_price: '' });
+      setNewStop({ city: '', venue: '', event_date: '', ticket_price: '' });
+      onTourUpdated();
       toast.success('Город добавлен');
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка добавления'); }
   };
@@ -94,6 +119,7 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
     try {
       await toursApi.deleteStop(tour.id, stopId);
       setStops(prev => prev.filter(s => s.id !== stopId));
+      onTourUpdated();
       toast.success('Город удалён');
     } catch { toast.error('Ошибка удаления'); }
   };
@@ -139,11 +165,11 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
       const updated = await toursApi.getFinances(tour.id);
       setFinances(updated);
       setEditingFinances(false);
+      onTourUpdated();
       toast.success('Финансы сохранены');
     } catch { toast.error('Ошибка сохранения'); }
   };
 
-  // Задача 6: безопасный расчёт
   const safeNum = (v: string | number | undefined | null, fb = 0) => {
     const n = parseFloat(String(v ?? fb));
     return isNaN(n) ? fb : n;
@@ -163,13 +189,6 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
 
   const progressConfirmed = rider.filter(r => r.status === 'confirmed').length;
   const progressTotal = rider.length;
-
-  const TABS = [
-    { id: 'setlist'  as const, label: 'Сет-лист' },
-    { id: 'stops'    as const, label: 'Города' },
-    { id: 'rider'    as const, label: 'Райдер' },
-    { id: 'finances' as const, label: 'Финансы' },
-  ];
 
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-subtle)' }}>
@@ -214,7 +233,23 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
           </div>
         )}
 
-        {tab === 'stops' && (
+        {tab === 'details' && !tourMode && (
+          <div className="space-y-3">
+            {[
+              { label: 'Город', value: tour.city || '—' },
+              { label: 'Площадка', value: tour.venue || '—' },
+              { label: 'Дата', value: formatDate(tour.start_date) },
+              { label: 'Цена билета', value: tour.avg_ticket_price > 0 ? `${tour.avg_ticket_price.toLocaleString()} ₽` : '—' },
+            ].map(({ label, value }) => (
+              <div key={label} className="flex justify-between py-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                <span className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>{label}</span>
+                <span className="text-[13px] font-medium" style={{ color: 'var(--text-primary)' }}>{value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === 'stops' && tourMode && (
           <div className="space-y-3">
             {stops.length > 0 ? (
               <div className="space-y-2">
@@ -224,6 +259,9 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
                     <MapPin className="w-4 h-4 flex-shrink-0" style={{ color: '#fb923c' }} />
                     <div className="flex-1 min-w-0">
                       <p className="text-[13.5px] font-medium" style={{ color: 'var(--text-primary)' }}>{stop.city}</p>
+                      {stop.venue && (
+                        <p className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>{stop.venue}</p>
+                      )}
                       <div className="flex items-center gap-2 mt-0.5">
                         {stop.event_date && (
                           <span className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>{formatDate(stop.event_date)}</span>
@@ -248,17 +286,20 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
               <p className="text-[13px]" style={{ color: 'var(--text-tertiary)' }}>Города не добавлены</p>
             )}
             {isOwner && (
-              <div className="flex gap-2 mt-3">
-                <input className="input-base flex-1" style={{ padding: '8px 12px', fontSize: 13 }}
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <input className="input-base col-span-1" style={{ padding: '8px 12px', fontSize: 13 }}
                   value={newStop.city} onChange={e => setNewStop(p => ({ ...p, city: e.target.value }))}
                   placeholder="Город" />
-                <input type="date" className="input-base" style={{ padding: '8px 12px', fontSize: 13, width: 140 }}
+                <input className="input-base col-span-1" style={{ padding: '8px 12px', fontSize: 13 }}
+                  value={newStop.venue} onChange={e => setNewStop(p => ({ ...p, venue: e.target.value }))}
+                  placeholder="Площадка" />
+                <input type="date" className="input-base" style={{ padding: '8px 12px', fontSize: 13 }}
                   value={newStop.event_date} onChange={e => setNewStop(p => ({ ...p, event_date: e.target.value }))} />
-                <input type="number" className="input-base" style={{ padding: '8px 12px', fontSize: 13, width: 120 }}
+                <input type="number" className="input-base" style={{ padding: '8px 12px', fontSize: 13 }}
                   value={newStop.ticket_price} onChange={e => setNewStop(p => ({ ...p, ticket_price: e.target.value }))}
                   placeholder="Цена ₽" />
-                <button onClick={addStop} className="btn btn-primary flex-shrink-0">
-                  <Plus className="w-4 h-4" />
+                <button onClick={addStop} className="btn btn-primary col-span-2">
+                  <Plus className="w-4 h-4" /> Добавить город
                 </button>
               </div>
             )}
@@ -299,11 +340,7 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
                         {(['pending', 'confirmed', 'problem'] as const).map(s => (
                           <button key={s} onClick={() => updateRiderStatus(item, s)}
                             className="badge flex items-center gap-1 transition-all"
-                            style={{
-                              ...STATUS_COLORS[s],
-                              opacity: item.status === s ? 1 : 0.35,
-                              cursor: 'pointer', border: 'none',
-                            }}
+                            style={{ ...STATUS_COLORS[s], opacity: item.status === s ? 1 : 0.35, cursor: 'pointer', border: 'none' }}
                             title={STATUS_LABELS[s]}
                           >
                             {STATUS_ICONS[s]}
@@ -356,20 +393,18 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
             {editingFinances ? (
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { key: 'fee',                      label: 'Гонорар (₽)' },
-                  { key: 'tax_percent',              label: 'Налог (%)' },
+                  { key: 'fee', label: 'Гонорар (₽)' },
+                  { key: 'tax_percent', label: 'Налог (%)' },
                   { key: 'agent_commission_percent', label: 'Комиссия агента (%)' },
-                  { key: 'transport',                label: 'Транспорт (₽)' },
-                  { key: 'per_diem',                 label: 'Суточные (₽)' },
-                  { key: 'hotel',                    label: 'Гостиница (₽)' },
-                  { key: 'other_expenses',           label: 'Прочие расходы (₽)' },
-                  { key: 'base_ticket_price',        label: 'Базовая цена билета (₽)' },
-                  { key: 'city_coefficient',         label: 'Коэф. города' },
+                  { key: 'transport', label: 'Транспорт (₽)' },
+                  { key: 'per_diem', label: 'Суточные (₽)' },
+                  { key: 'hotel', label: 'Гостиница (₽)' },
+                  { key: 'other_expenses', label: 'Прочие расходы (₽)' },
+                  { key: 'base_ticket_price', label: 'Базовая цена билета (₽)' },
+                  { key: 'city_coefficient', label: 'Коэф. города' },
                 ].map(({ key, label }) => (
                   <div key={key}>
-                    <label className="block text-[12px] font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
-                      {label}
-                    </label>
+                    <label className="block text-[12px] font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>{label}</label>
                     <input type="number" min="0" step="0.01" className="input-base"
                       style={{ padding: '7px 11px', fontSize: 13 }}
                       value={finForm[key as keyof typeof finForm]}
@@ -410,7 +445,7 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
                 </div>
                 {finances.avg_ticket_price != null && finances.avg_ticket_price > 0 && (
                   <p className="text-[12px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                    Расч. цена билета: {Math.round(finances.avg_ticket_price ?? 0).toLocaleString('ru-RU')} ₽
+                    {tourMode ? 'Ср. цена билета' : 'Цена билета'}: {Math.round(finances.avg_ticket_price ?? 0).toLocaleString('ru-RU')} ₽
                   </p>
                 )}
               </div>
@@ -422,10 +457,7 @@ function TourExpandedPanel({ tour, isOwner }: { tour: TourWithDetails; isOwner: 
   );
 }
 
-// ── Основной компонент Tours ───────────────────────────────────────────────────
-type Props = {
-  onNavigate: NavigateFn;
-};
+type Props = { onNavigate: NavigateFn };
 
 export default function Tours({ onNavigate }: Props) {
   const { user } = useAuth();
@@ -439,19 +471,21 @@ export default function Tours({ onNavigate }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<Tour | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Задача 2: тип участника
+  const [eventKind, setEventKind] = useState<EventKind>('concert');
   const [ownerType, setOwnerType] = useState<OwnerType>('band');
   const [form, setForm] = useState({
-    program_name: '', city: '', start_date: '', end_date: '',
-    avg_ticket_price: '', band_id: '', singer_id: '',
+    program_name: '', city: '', venue: '', start_date: '', end_date: '',
+    ticket_price: '', band_id: '', singer_id: '',
   });
   const [selectedSongs, setSelectedSongs] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const fetchTours = useCallback(async () => {
-    try { setTours(await toursApi.getAll()); }
-    catch (err) { console.error(err); }
+    try {
+      const data = await toursApi.getAll();
+      setTours(data.map(t => ({ ...t, type: t.type ?? 'concert', venue: t.venue ?? '' })));
+    } catch (err) { console.error(err); }
     finally { setLoading(false); }
   }, []);
 
@@ -465,10 +499,12 @@ export default function Tours({ onNavigate }: Props) {
   const toggleExpand = async (id: string) => {
     if (expandedId === id) { setExpandedId(null); return; }
     setExpandedId(id);
+    const tour = tours.find(t => t.id === id);
+    if (!tour) return;
     try {
       const [tourSongs, stops, rider] = await Promise.all([
         toursApi.getSongs(id),
-        toursApi.getStops(id),
+        isTour(tour) ? toursApi.getStops(id) : Promise.resolve([]),
         toursApi.getRider(id),
       ]);
       setTours(prev => prev.map(t => t.id === id ? { ...t, tourSongs, stops, rider } : t));
@@ -477,10 +513,11 @@ export default function Tours({ onNavigate }: Props) {
 
   const openAdd = () => {
     setEditTour(null);
+    setEventKind('concert');
     setOwnerType('band');
     setForm({
-      program_name: '', city: '', start_date: '', end_date: '',
-      avg_ticket_price: '',
+      program_name: '', city: '', venue: '', start_date: '', end_date: '',
+      ticket_price: '',
       band_id: bands[0]?.id ?? '',
       singer_id: singers[0]?.id ?? '',
     });
@@ -489,12 +526,15 @@ export default function Tours({ onNavigate }: Props) {
 
   const openEdit = async (tour: Tour) => {
     setEditTour(tour);
-    const issinger = !!tour.singer_id && !tour.band_id;
-    setOwnerType(issinger ? 'singer' : 'band');
+    setEventKind(tour.type ?? 'concert');
+    setOwnerType(!!tour.singer_id && !tour.band_id ? 'singer' : 'band');
     setForm({
-      program_name: tour.program_name, city: tour.city,
-      start_date: tour.start_date ?? '', end_date: tour.end_date ?? '',
-      avg_ticket_price: tour.avg_ticket_price?.toString() ?? '',
+      program_name: tour.program_name,
+      city: tour.city ?? '',
+      venue: tour.venue ?? '',
+      start_date: tour.start_date?.slice(0, 10) ?? '',
+      end_date: tour.end_date?.slice(0, 10) ?? '',
+      ticket_price: tour.avg_ticket_price?.toString() ?? '',
       band_id: tour.band_id ?? '',
       singer_id: tour.singer_id ?? '',
     });
@@ -504,25 +544,42 @@ export default function Tours({ onNavigate }: Props) {
   };
 
   const handleSave = async () => {
-    if (!form.program_name.trim()) { setError('Название программы обязательно'); return; }
+    if (!form.program_name.trim()) { setError('Название обязательно'); return; }
     if (ownerType === 'band' && !form.band_id) { setError('Выберите группу'); return; }
     if (ownerType === 'singer' && !form.singer_id) { setError('Выберите исполнителя'); return; }
+    if (eventKind === 'concert' && !form.city.trim()) { setError('Укажите город'); return; }
+
     setSaving(true); setError('');
-    const payload = {
-      program_name: form.program_name.trim(), city: form.city.trim(),
-      start_date: form.start_date || null, end_date: form.end_date || null,
-      avg_ticket_price: form.avg_ticket_price ? parseFloat(form.avg_ticket_price) : 0,
+
+    const base = {
+      type: eventKind,
+      program_name: form.program_name.trim(),
       band_id:   ownerType === 'band'   ? form.band_id   : null,
       singer_id: ownerType === 'singer' ? form.singer_id : null,
       songIds: selectedSongs,
     };
+
+    const payload = eventKind === 'concert'
+      ? {
+          ...base,
+          city: form.city.trim(),
+          venue: form.venue.trim(),
+          start_date: form.start_date || null,
+          avg_ticket_price: form.ticket_price ? parseFloat(form.ticket_price) : 0,
+        }
+      : {
+          ...base,
+          start_date: form.start_date || null,
+          end_date: form.end_date || null,
+        };
+
     try {
       if (editTour) {
         await toursApi.update(editTour.id, payload);
-        toast.success('Тур обновлён');
+        toast.success(eventKind === 'tour' ? 'Тур обновлён' : 'Концерт обновлён');
       } else {
         await toursApi.create(payload);
-        toast.success('Тур создан');
+        toast.success(eventKind === 'tour' ? 'Тур создан' : 'Концерт создан');
       }
       await fetchTours(); setShowForm(false);
     } catch (err) {
@@ -535,132 +592,170 @@ export default function Tours({ onNavigate }: Props) {
     if (!deleteTarget) return;
     try {
       await toursApi.delete(deleteTarget.id);
-      toast.success('Тур удалён');
+      toast.success('Удалено');
       await fetchTours();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Ошибка удаления');
     } finally { setDeleteTarget(null); }
   };
 
+  const tourCount = tours.filter(t => isTour(t)).length;
+  const concertCount = tours.length - tourCount;
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Туры</h1>
+          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Туры и концерты</h1>
           <p className="text-[13.5px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-            {tours.length} {tours.length === 1 ? 'тур' : tours.length < 5 ? 'тура' : 'туров'}
+            {tourCount} {tourCount === 1 ? 'тур' : tourCount < 5 ? 'тура' : 'туров'}
+            {concertCount > 0 && ` · ${concertCount} ${concertCount === 1 ? 'концерт' : concertCount < 5 ? 'концерта' : 'концертов'}`}
           </p>
         </div>
         <button onClick={openAdd} className="btn btn-primary">
-          <Plus className="w-4 h-4" /> Новый тур
+          <Plus className="w-4 h-4" /> Добавить
         </button>
       </div>
 
       {loading ? <SkeletonList rows={3} /> : tours.length === 0 ? (
         <EmptyState
           icon={<MapPin className="w-5 h-5" />}
-          title="Нет туров"
-          description="Создайте первый гастрольный тур"
-          action={<button onClick={openAdd} className="btn btn-primary"><Plus className="w-4 h-4" /> Новый тур</button>}
+          title="Нет туров и концертов"
+          description="Создайте тур или одиночный концерт"
+          action={<button onClick={openAdd} className="btn btn-primary"><Plus className="w-4 h-4" /> Добавить</button>}
         />
       ) : (
         <div className="space-y-3">
-          {tours.map(tour => (
-            <div key={tour.id} className="card overflow-visible">  {/* Задача 1: overflow-visible */}
-              <div className="flex items-start gap-4 px-5 py-4">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-                  style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c' }}>
-                  <MapPin className="w-4 h-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-[14.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
-                    {tour.program_name}
-                  </h3>
-                  <div className="flex flex-wrap items-center gap-3 mt-1.5">
-                    {tour.city && (
-                      <span className="flex items-center gap-1.5 text-[12.5px]" style={{ color: 'var(--text-secondary)' }}>
-                        <MapPin className="w-3 h-3" />{tour.city}
-                      </span>
-                    )}
-                    {(tour.start_date || tour.end_date) && (
-                      <span className="flex items-center gap-1.5 text-[12.5px]" style={{ color: 'var(--text-secondary)' }}>
-                        <Calendar className="w-3 h-3" />
-                        {formatDate(tour.start_date)} — {formatDate(tour.end_date)}
-                      </span>
-                    )}
-                    {tour.avg_ticket_price > 0 && (
-                      <span className="badge flex items-center gap-1.5" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>
-                        <Ticket className="w-3 h-3" />{tour.avg_ticket_price.toLocaleString()} ₽ ср.
-                      </span>
-                    )}
+          {tours.map(tour => {
+            const tourMode = isTour(tour);
+            const stopsCount = tour.stops_count ?? 0;
+            return (
+              <div key={tour.id} className="card overflow-visible">
+                <div className="flex items-start gap-4 px-5 py-4">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+                    style={{
+                      background: tourMode ? 'rgba(99,102,241,0.1)' : 'rgba(251,146,60,0.1)',
+                      color: tourMode ? '#6366f1' : '#fb923c',
+                    }}>
+                    {tourMode ? <Route className="w-4 h-4" /> : <Ticket className="w-4 h-4" />}
                   </div>
-                  {/* Задача 2 + 5: отображение владельца тура со ссылкой */}
-                  <div className="mt-1">
-                    {tour.band && (
-                      <button
-                        onClick={() => onNavigate('bands', { bandId: tour.band_id ?? '' })}
-                        className="flex items-center gap-1 text-[12px] transition-colors hover:underline"
-                        style={{ color: 'var(--accent)' }}
-                      >
-                        <Music2 className="w-3 h-3" />
-                        Группа: {(tour.band as Band).name}
-                      </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-[14.5px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {tour.program_name}
+                      </h3>
+                      <span className="badge text-[10px]" style={{
+                        background: tourMode ? 'rgba(99,102,241,0.1)' : 'rgba(251,146,60,0.1)',
+                        color: tourMode ? '#6366f1' : '#fb923c',
+                      }}>
+                        {tourMode ? 'Тур' : 'Концерт'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                      {tourMode ? (
+                        <>
+                          {stopsCount > 0 && (
+                            <span className="flex items-center gap-1.5 text-[12.5px]" style={{ color: 'var(--text-secondary)' }}>
+                              <MapPin className="w-3 h-3" />[{stopsCount}] {stopsCount === 1 ? 'город' : stopsCount < 5 ? 'города' : 'городов'}
+                            </span>
+                          )}
+                          {(tour.start_date || tour.end_date) && (
+                            <span className="flex items-center gap-1.5 text-[12.5px]" style={{ color: 'var(--text-secondary)' }}>
+                              <Calendar className="w-3 h-3" />
+                              {formatDate(tour.start_date)} — {formatDate(tour.end_date)}
+                            </span>
+                          )}
+                          {tour.avg_ticket_price > 0 && (
+                            <span className="badge flex items-center gap-1.5" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>
+                              <Ticket className="w-3 h-3" />{tour.avg_ticket_price.toLocaleString()} ₽ ср.
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {tour.city && (
+                            <span className="flex items-center gap-1.5 text-[12.5px]" style={{ color: 'var(--text-secondary)' }}>
+                              <MapPin className="w-3 h-3" />{tour.city}
+                              {tour.venue && ` · ${tour.venue}`}
+                            </span>
+                          )}
+                          {tour.start_date && (
+                            <span className="flex items-center gap-1.5 text-[12.5px]" style={{ color: 'var(--text-secondary)' }}>
+                              <Calendar className="w-3 h-3" />{formatDate(tour.start_date)}
+                            </span>
+                          )}
+                          {tour.avg_ticket_price > 0 && (
+                            <span className="badge flex items-center gap-1.5" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>
+                              <Ticket className="w-3 h-3" />{tour.avg_ticket_price.toLocaleString()} ₽
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <div className="mt-1">
+                      {tour.band && (
+                        <button onClick={() => onNavigate('bands', { bandId: tour.band_id ?? '' })}
+                          className="flex items-center gap-1 text-[12px] transition-colors hover:underline"
+                          style={{ color: 'var(--accent)' }}>
+                          <Music2 className="w-3 h-3" />Группа: {(tour.band as Band).name}
+                        </button>
+                      )}
+                      {tour.singer_id && !tour.band_id && tour.singer_data && (
+                        <button onClick={() => onNavigate('singers', { singerId: tour.singer_id ?? '' })}
+                          className="flex items-center gap-1 text-[12px] transition-colors hover:underline"
+                          style={{ color: '#34d399' }}>
+                          <Mic2 className="w-3 h-3" />Исполнитель: {(tour.singer_data as Singer).name}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-shrink-0"
+                    style={{ position: 'relative', zIndex: 'var(--z-card-actions)' }}>
+                    {tour.created_by === user?.id && (
+                      <>
+                        <Tooltip label="Редактировать">
+                          <button onClick={() => openEdit(tour)} className="btn btn-ghost btn-icon"
+                            style={{ color: 'var(--text-tertiary)' }}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label="Удалить">
+                          <button onClick={() => setDeleteTarget(tour)} className="btn btn-ghost btn-icon"
+                            style={{ color: 'var(--text-tertiary)' }}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
+                      </>
                     )}
-                    {tour.singer_id && !tour.band_id && tour.singer_data && (
-                      <button
-                        onClick={() => onNavigate('singers', { singerId: tour.singer_id ?? '' })}
-                        className="flex items-center gap-1 text-[12px] transition-colors hover:underline"
-                        style={{ color: '#34d399' }}
-                      >
-                        <Mic2 className="w-3 h-3" />
-                        Исполнитель: {(tour.singer_data as Singer).name}
+                    <Tooltip label={expandedId === tour.id ? 'Свернуть' : 'Раскрыть'}>
+                      <button onClick={() => toggleExpand(tour.id)} className="btn btn-ghost btn-icon"
+                        style={{ color: 'var(--text-tertiary)' }}>
+                        {expandedId === tour.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </button>
-                    )}
+                    </Tooltip>
                   </div>
                 </div>
 
-                {/* Задача 1: z-index fix для кнопок */}
-                <div
-                  className="flex items-center gap-1.5 flex-shrink-0"
-                  style={{ position: 'relative', zIndex: 'var(--z-card-actions)' }}
-                >
-                  {tour.created_by === user?.id && (
-                    <>
-                      <Tooltip label="Редактировать">
-                        <button onClick={() => openEdit(tour)} className="btn btn-ghost btn-icon"
-                          style={{ color: 'var(--text-tertiary)' }}>
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
-                      <Tooltip label="Удалить">
-                        <button onClick={() => setDeleteTarget(tour)} className="btn btn-ghost btn-icon"
-                          style={{ color: 'var(--text-tertiary)' }}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
-                    </>
-                  )}
-                  <Tooltip label={expandedId === tour.id ? 'Свернуть' : 'Раскрыть'}>
-                    <button onClick={() => toggleExpand(tour.id)} className="btn btn-ghost btn-icon"
-                      style={{ color: 'var(--text-tertiary)' }}>
-                      {expandedId === tour.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
-                  </Tooltip>
-                </div>
+                {expandedId === tour.id && (
+                  <TourExpandedPanel
+                    tour={tour}
+                    isOwner={tour.created_by === user?.id}
+                    onTourUpdated={fetchTours}
+                  />
+                )}
               </div>
-
-              {expandedId === tour.id && (
-                <TourExpandedPanel tour={tour} isOwner={tour.created_by === user?.id} />
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {showForm && (
         <Modal
-          title={editTour ? 'Редактировать тур' : 'Новый тур'}
-          subtitle={editTour ? `Редактирование: «${editTour.program_name}»` : 'Создать гастрольный тур'}
+          title={editTour
+            ? (eventKind === 'tour' ? 'Редактировать тур' : 'Редактировать концерт')
+            : (eventKind === 'tour' ? 'Новый тур' : 'Новый концерт')}
+          subtitle={editTour ? `«${editTour.program_name}»` : undefined}
           onClose={() => setShowForm(false)}
           size="lg"
           footer={
@@ -675,62 +770,94 @@ export default function Tours({ onNavigate }: Props) {
           <div className="space-y-5">
             <div>
               <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-                Название программы *
+                Тип *
               </label>
-              <input autoFocus className="input-base" value={form.program_name}
-                onChange={e => setForm({ ...form, program_name: e.target.value })}
-                placeholder="Мировой тур 2025" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Город</label>
-                <input className="input-base" value={form.city}
-                  onChange={e => setForm({ ...form, city: e.target.value })} placeholder="Москва" />
-              </div>
-              <div>
-                <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Ср. цена билета (₽)</label>
-                <input type="number" min="0" step="100" className="input-base"
-                  value={form.avg_ticket_price}
-                  onChange={e => setForm({ ...form, avg_ticket_price: e.target.value })} placeholder="2500" />
-              </div>
-              <div>
-                <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Дата начала</label>
-                <input type="date" className="input-base" value={form.start_date}
-                  onChange={e => setForm({ ...form, start_date: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Дата окончания</label>
-                <input type="date" className="input-base" value={form.end_date}
-                  onChange={e => setForm({ ...form, end_date: e.target.value })} />
+              <div className="flex gap-3">
+                {([
+                  { value: 'tour' as EventKind, label: '🗺️ Тур', desc: 'Серия концертов' },
+                  { value: 'concert' as EventKind, label: '🎫 Концерт', desc: 'Одно выступление' },
+                ]).map(({ value, label, desc }) => (
+                  <button key={value} type="button" onClick={() => setEventKind(value)}
+                    className="flex-1 p-3 rounded-xl text-left transition-all"
+                    style={{
+                      background: eventKind === value ? 'var(--accent-muted)' : 'var(--bg-elevated)',
+                      border: `1px solid ${eventKind === value ? 'var(--accent)' : 'var(--border-base)'}`,
+                    }}
+                  >
+                    <p className="text-[13.5px] font-medium" style={{ color: eventKind === value ? 'var(--accent)' : 'var(--text-primary)' }}>
+                      {label}
+                    </p>
+                    <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{desc}</p>
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Задача 2: тип участника */}
             <div>
               <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-                Тип участника *
+                Название *
               </label>
+              <input autoFocus className="input-base" value={form.program_name}
+                onChange={e => setForm({ ...form, program_name: e.target.value })}
+                placeholder={eventKind === 'tour' ? 'Осенний тур 2026' : 'Концерт в Москве'} />
+            </div>
+
+            {eventKind === 'concert' ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Город *</label>
+                  <input className="input-base" value={form.city}
+                    onChange={e => setForm({ ...form, city: e.target.value })} placeholder="Москва" />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Площадка</label>
+                  <input className="input-base" value={form.venue}
+                    onChange={e => setForm({ ...form, venue: e.target.value })} placeholder="VK Stadium" />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Дата</label>
+                  <input type="date" className="input-base" value={form.start_date}
+                    onChange={e => setForm({ ...form, start_date: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Цена билета (₽)</label>
+                  <input type="number" min="0" step="100" className="input-base"
+                    value={form.ticket_price}
+                    onChange={e => setForm({ ...form, ticket_price: e.target.value })} placeholder="2500" />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Дата начала</label>
+                  <input type="date" className="input-base" value={form.start_date}
+                    onChange={e => setForm({ ...form, start_date: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Дата окончания</label>
+                  <input type="date" className="input-base" value={form.end_date}
+                    onChange={e => setForm({ ...form, end_date: e.target.value })} />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Участник *</label>
               <div className="flex gap-3 mb-3">
                 {[
-                  { value: 'band' as OwnerType, label: '🎸 Группа', icon: <Music2 className="w-4 h-4" /> },
-                  { value: 'singer' as OwnerType, label: '🎤 Сольный исполнитель', icon: <Mic2 className="w-4 h-4" /> },
+                  { value: 'band' as OwnerType, label: '🎸 Группа' },
+                  { value: 'singer' as OwnerType, label: '🎤 Сольный исполнитель' },
                 ].map(({ value, label }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setOwnerType(value)}
-                    className="flex-1 p-3 rounded-xl text-left transition-all text-[13.5px] font-medium"
+                  <button key={value} type="button" onClick={() => setOwnerType(value)}
+                    className="flex-1 p-3 rounded-xl text-[13.5px] font-medium transition-all"
                     style={{
                       background: ownerType === value ? 'var(--accent-muted)' : 'var(--bg-elevated)',
                       border: `1px solid ${ownerType === value ? 'var(--accent)' : 'var(--border-base)'}`,
                       color: ownerType === value ? 'var(--accent)' : 'var(--text-secondary)',
                     }}
-                  >
-                    {label}
-                  </button>
+                  >{label}</button>
                 ))}
               </div>
-
               {ownerType === 'band' && (
                 <select className="input-base" value={form.band_id}
                   onChange={e => setForm({ ...form, band_id: e.target.value })}>
@@ -747,6 +874,12 @@ export default function Tours({ onNavigate }: Props) {
               )}
             </div>
 
+            {eventKind === 'tour' && !editTour && (
+              <p className="text-[12px] p-3 rounded-lg" style={{ background: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>
+                После создания тура добавьте города на вкладке «Города» в карточке тура.
+              </p>
+            )}
+
             {songs.length > 0 && (
               <div>
                 <label className="block text-[13px] font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
@@ -757,8 +890,7 @@ export default function Tours({ onNavigate }: Props) {
                   {songs.map(s => (
                     <label key={s.id} className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer"
                       style={{ background: selectedSongs.includes(s.id) ? 'rgba(96,165,250,0.08)' : 'transparent' }}>
-                      <input type="checkbox"
-                        checked={selectedSongs.includes(s.id)}
+                      <input type="checkbox" checked={selectedSongs.includes(s.id)}
                         onChange={() => setSelectedSongs(prev =>
                           prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
                         )}
@@ -777,8 +909,8 @@ export default function Tours({ onNavigate }: Props) {
 
       {deleteTarget && (
         <ConfirmDialog
-          title="Удалить тур?"
-          description={`Вы уверены, что хотите удалить тур «${deleteTarget.program_name}»?`}
+          title="Удалить?"
+          description={`Вы уверены, что хотите удалить «${deleteTarget.program_name}»?`}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
         />

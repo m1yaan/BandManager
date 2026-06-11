@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   Shield, Users, Ban, Unlock, Trash2, ChevronDown, BarChart3,
   Mail, Calendar, Crown, Mic2, Briefcase, Eye, X,
-  Music2, Radio, MapPin, MessageSquare, ArrowLeft,
+  Music2, Radio, MapPin, MessageSquare,
 } from 'lucide-react';
 import { NavigateFn } from '../../App';
 

@@ -48,13 +48,16 @@ export async function getRiderAttention(req: AuthRequest, res: Response): Promis
   try {
     const result = await db.query(
       `SELECT t.id, t.program_name, t.city, t.start_date, t.rider_status,
-              b.name AS band_name
+              t.band_id, t.singer_id,
+              b.name AS band_name, s.name AS singer_name
        FROM tour t
        LEFT JOIN band b ON b.id = t.band_id
+       LEFT JOIN singer s ON s.id = t.singer_id
        WHERE t.created_by = $1
          AND t.rider_status IN ('empty', 'partial')
          AND t.start_date IS NOT NULL
          AND t.start_date >= NOW()
+         AND (t.band_id IS NOT NULL OR t.singer_id IS NOT NULL)
        ORDER BY t.start_date ASC
        LIMIT 5`,
       [req.userId]

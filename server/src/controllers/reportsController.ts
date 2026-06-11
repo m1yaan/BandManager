@@ -8,13 +8,16 @@ export async function songsByBandTours(req: AuthRequest, res: Response): Promise
   if (!bandId) { res.status(400).json({ error: 'bandId обязателен' }); return; }
   try {
     const result = await db.query(
-      `SELECT DISTINCT s.title, s.composer, s.creation_year
+      `SELECT DISTINCT s.title,
+              COALESCE(c.name, s.composer) AS composer_name,
+              s.release_date
        FROM song s
        JOIN tour_song ts ON ts.song_id = s.id
        JOIN tour t ON t.id = ts.tour_id
-       WHERE t.band_id = $1
+       LEFT JOIN contributor c ON c.id = s.composer_id
+       WHERE t.band_id = $1 AND t.created_by = $2
        ORDER BY s.title`,
-      [bandId]
+      [bandId, req.userId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -31,11 +34,19 @@ export async function bandsByComposer(req: AuthRequest, res: Response): Promise<
     const result = await db.query(
       `SELECT DISTINCT b.name, b.country, b.rating
        FROM band b
-       JOIN repertoire r ON r.band_id = b.id
-       JOIN song s ON s.id = r.song_id
-       WHERE LOWER(s.composer) LIKE LOWER($1)
+       WHERE b.created_by = $2
+         AND EXISTS (
+           SELECT 1 FROM song s
+           LEFT JOIN contributor c ON c.id = s.composer_id
+           WHERE s.created_by = $2
+             AND LOWER(COALESCE(c.name, s.composer, '')) LIKE LOWER($1)
+             AND (
+               EXISTS (SELECT 1 FROM song_band sb WHERE sb.band_id = b.id AND sb.song_id = s.id)
+               OR EXISTS (SELECT 1 FROM repertoire r WHERE r.band_id = b.id AND r.song_id = s.id)
+             )
+         )
        ORDER BY b.name`,
-      [`%${composer}%`]
+      [`%${composer}%`, req.userId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -50,14 +61,31 @@ export async function songInfo(req: AuthRequest, res: Response): Promise<void> {
   if (!title) { res.status(400).json({ error: 'title обязателен' }); return; }
   try {
     const result = await db.query(
-      `SELECT s.*, array_agg(DISTINCT b.name) FILTER (WHERE b.name IS NOT NULL) AS bands
+      `SELECT s.title,
+              COALESCE(c1.name, s.composer) AS composer_name,
+              COALESCE(c2.name, s.lyricist) AS lyricist_name,
+              s.release_date,
+              (
+                SELECT COALESCE(array_agg(DISTINCT nm), '{}')
+                FROM (
+                  SELECT b.name AS nm
+                  FROM band b
+                  JOIN song_band sb ON sb.band_id = b.id
+                  WHERE sb.song_id = s.id AND b.created_by = $2
+                  UNION
+                  SELECT b.name
+                  FROM band b
+                  JOIN repertoire r ON r.band_id = b.id
+                  WHERE r.song_id = s.id AND b.created_by = $2
+                ) bands_union
+              ) AS bands
        FROM song s
-       LEFT JOIN repertoire r ON r.song_id = s.id
-       LEFT JOIN band b ON b.id = r.band_id
+       LEFT JOIN contributor c1 ON c1.id = s.composer_id
+       LEFT JOIN contributor c2 ON c2.id = s.lyricist_id
        WHERE LOWER(s.title) LIKE LOWER($1)
-       GROUP BY s.id
+         AND s.created_by = $2
        ORDER BY s.title`,
-      [`%${title}%`]
+      [`%${title}%`, req.userId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -70,12 +98,30 @@ export async function songInfo(req: AuthRequest, res: Response): Promise<void> {
 export async function topBandRepertoire(req: AuthRequest, res: Response): Promise<void> {
   try {
     const result = await db.query(
-      `SELECT s.title, s.composer, s.lyricist, s.creation_year, b.name AS band_name, b.rating
-       FROM song s
-       JOIN repertoire r ON r.song_id = s.id
-       JOIN band b ON b.id = r.band_id
-       WHERE b.id = (SELECT id FROM band WHERE rating IS NOT NULL ORDER BY rating DESC LIMIT 1)
-       ORDER BY s.title`
+      `WITH top_band AS (
+         SELECT id FROM band
+         WHERE rating IS NOT NULL AND created_by = $1
+         ORDER BY rating DESC NULLS LAST
+         LIMIT 1
+       )
+       SELECT s.title,
+              COALESCE(c1.name, s.composer) AS composer_name,
+              COALESCE(c2.name, s.lyricist) AS lyricist_name,
+              s.release_date,
+              b.name AS band_name,
+              b.rating
+       FROM top_band tb
+       JOIN band b ON b.id = tb.id
+       JOIN (
+         SELECT song_id, band_id FROM song_band
+         UNION
+         SELECT song_id, band_id FROM repertoire
+       ) links ON links.band_id = b.id
+       JOIN song s ON s.id = links.song_id AND s.created_by = $1
+       LEFT JOIN contributor c1 ON c1.id = s.composer_id
+       LEFT JOIN contributor c2 ON c2.id = s.lyricist_id
+       ORDER BY s.title`,
+      [req.userId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -90,13 +136,16 @@ export async function toursByBand(req: AuthRequest, res: Response): Promise<void
   if (!bandId) { res.status(400).json({ error: 'bandId обязателен' }); return; }
   try {
     const result = await db.query(
-      `SELECT t.program_name, t.city, t.start_date, t.end_date, t.avg_ticket_price,
+      `SELECT t.program_name, t.city,
+              TO_CHAR(t.start_date, 'YYYY-MM-DD') AS start_date,
+              TO_CHAR(t.end_date, 'YYYY-MM-DD') AS end_date,
+              t.avg_ticket_price,
               b.name AS band_name
        FROM tour t
        JOIN band b ON b.id = t.band_id
-       WHERE t.band_id = $1
+       WHERE t.band_id = $1 AND t.created_by = $2
        ORDER BY t.start_date DESC`,
-      [bandId]
+      [bandId, req.userId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -111,14 +160,15 @@ export async function songsBySinger(req: AuthRequest, res: Response): Promise<vo
   if (!singerId) { res.status(400).json({ error: 'singerId обязателен' }); return; }
   try {
     const result = await db.query(
-      `SELECT DISTINCT s.title, s.composer, s.creation_year, b.name AS band_name
+      `SELECT DISTINCT s.title,
+              COALESCE(c.name, s.composer) AS composer_name,
+              s.release_date
        FROM song s
-       JOIN repertoire r ON r.song_id = s.id
-       JOIN band b ON b.id = r.band_id
-       JOIN band_member bm ON bm.band_id = b.id
-       WHERE bm.singer_id = $1
+       JOIN song_singer ss ON ss.song_id = s.id
+       LEFT JOIN contributor c ON c.id = s.composer_id
+       WHERE ss.singer_id = $1 AND s.created_by = $2
        ORDER BY s.title`,
-      [singerId]
+      [singerId, req.userId]
     );
     res.json(result.rows);
   } catch (err) {
