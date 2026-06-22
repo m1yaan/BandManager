@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { usePermissions } from './hooks/usePermissions';
+import { useRouter } from './hooks/useRouter';
 import AuthPage from './pages/AuthPage';
+import LandingPage from './pages/LandingPage';
 import Layout from './components/Layout';
 import Dashboard from './sections/Dashboard';
 import Bands from './sections/Bands';
@@ -14,12 +16,13 @@ import ProfilePage from './sections/ProfilePage';
 import MessagesPage from './sections/MessagesPage';
 import CalendarPage from './sections/CalendarPage';
 import AdminUsersPage from './sections/admin/AdminUsersPage';
+import AdminAuditPage from './sections/admin/AdminAuditPage';
 import SupportPage from './sections/SupportPage';
 
 export type Section =
   | 'dashboard' | 'bands' | 'singers' | 'songs' | 'tours'
   | 'reports' | 'profile' | 'messages' | 'calendar'
-  | 'admin' | 'support';
+  | 'admin' | 'admin-audit' | 'support';
 
 export type NavigateParams = {
   bandId?: string;
@@ -33,6 +36,7 @@ export type NavigateFn = (section: Section, params?: NavigateParams) => void;
 function AppContent() {
   const { user, loading } = useAuth();
   const { isManager, isAdmin } = usePermissions();
+  const { pathname, navigate } = useRouter();
   const [section, setSection] = useState<Section>('dashboard');
   const [navParams, setNavParams] = useState<NavigateParams>({});
 
@@ -47,7 +51,15 @@ function AppContent() {
     );
   }
 
-  if (!user) return <AuthPage />;
+  if (!user) {
+    if (pathname === '/login' || pathname.startsWith('/login')) {
+      return <AuthPage />;
+    }
+    if (pathname === '/' || pathname === '') {
+      return <LandingPage onNavigate={navigate} />;
+    }
+    return <LandingPage onNavigate={navigate} />;
+  }
 
   const handleNavigate: NavigateFn = (s, params = {}) => {
     setSection(s);
@@ -67,6 +79,7 @@ function AppContent() {
       case 'messages':  return (isManager || isAdmin) ? <MessagesPage /> : <Dashboard onNavigate={handleDashboardNavigate} />;
       case 'reports':   return (isManager || isAdmin) ? <ReportsPage /> : <Dashboard onNavigate={handleDashboardNavigate} />;
       case 'admin':     return isAdmin ? <AdminUsersPage onNavigate={handleNavigate} /> : <Dashboard onNavigate={handleDashboardNavigate} />;
+      case 'admin-audit': return isAdmin ? <AdminAuditPage /> : <Dashboard onNavigate={handleDashboardNavigate} />;
       case 'support':   return <SupportPage />;
       case 'profile':   return <ProfilePage />;
       default:          return <Dashboard onNavigate={handleDashboardNavigate} />;

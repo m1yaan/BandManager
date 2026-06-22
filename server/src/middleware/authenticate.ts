@@ -7,17 +7,16 @@ export interface AuthRequest extends Request {
   userRole?: string;
 }
 
-export function authMiddleware(
+export function authenticate(
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): void {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const token = req.cookies?.auth_token;
+  if (!token) {
     res.status(401).json({ error: 'Токен не предоставлен' });
     return;
   }
-  const token = authHeader.slice(7);
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as {
       userId: string;
@@ -33,6 +32,9 @@ export function authMiddleware(
   }
 }
 
+/** @deprecated use authenticate */
+export const authMiddleware = authenticate;
+
 export function requireRole(...roles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
     if (!req.userRole || !roles.includes(req.userRole)) {
@@ -43,7 +45,6 @@ export function requireRole(...roles: string[]) {
   };
 }
 
-// Admin может всё что manager + artist
 export function requireManager(req: AuthRequest, res: Response, next: NextFunction): void {
   const allowed = ['manager', 'admin'];
   if (!req.userRole || !allowed.includes(req.userRole)) {

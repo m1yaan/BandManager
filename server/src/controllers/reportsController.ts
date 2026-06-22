@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
 
 // 1. Песни на гастролях заданной группы
 export async function songsByBandTours(req: AuthRequest, res: Response): Promise<void> {

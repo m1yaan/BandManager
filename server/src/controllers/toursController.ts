@@ -1,7 +1,8 @@
 import { Response } from 'express';
 import { PoolClient } from 'pg';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
+import { logAction, getAuditContext } from '../middleware/auditMiddleware';
 
 type TourType = 'tour' | 'concert';
 
@@ -111,7 +112,9 @@ export async function addTourStop(req: AuthRequest, res: Response): Promise<void
       );
       await recalcTourAvgPrice(client, id);
       await client.query('COMMIT');
-      res.status(201).json(result.rows[0]);
+      const stop = result.rows[0];
+      logAction(req.userId!, 'CREATE', 'tour_stop', stop.id, null, req.body, getAuditContext(req));
+      res.status(201).json(stop);
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -151,6 +154,15 @@ export async function updateTourStop(req: AuthRequest, res: Response): Promise<v
     const client = await db.connect();
     try {
       await client.query('BEGIN');
+      const oldResult = await client.query(
+        'SELECT * FROM tour_stops WHERE id=$1 AND tour_id=$2',
+        [stopId, id]
+      );
+      if (oldResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        res.status(404).json({ error: 'Остановка не найдена' });
+        return;
+      }
       const result = await client.query(
         `UPDATE tour_stops SET city=$1, venue=$2, event_date=$3, ticket_price=$4
          WHERE id=$5 AND tour_id=$6 RETURNING *`,
@@ -163,6 +175,7 @@ export async function updateTourStop(req: AuthRequest, res: Response): Promise<v
       }
       await recalcTourAvgPrice(client, id);
       await client.query('COMMIT');
+      logAction(req.userId!, 'UPDATE', 'tour_stop', stopId, oldResult.rows[0], req.body, getAuditContext(req));
       res.json(result.rows[0]);
     } catch (err) {
       await client.query('ROLLBACK');
@@ -190,9 +203,19 @@ export async function deleteTourStop(req: AuthRequest, res: Response): Promise<v
     const client = await db.connect();
     try {
       await client.query('BEGIN');
+      const oldResult = await client.query(
+        'SELECT * FROM tour_stops WHERE id=$1 AND tour_id=$2',
+        [stopId, id]
+      );
+      if (oldResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        res.status(404).json({ error: 'Остановка не найдена' });
+        return;
+      }
       await client.query('DELETE FROM tour_stops WHERE id=$1 AND tour_id=$2', [stopId, id]);
       await recalcTourAvgPrice(client, id);
       await client.query('COMMIT');
+      logAction(req.userId!, 'DELETE', 'tour_stop', stopId, oldResult.rows[0], null, getAuditContext(req));
       res.json({ success: true });
     } catch (err) {
       await client.query('ROLLBACK');
@@ -373,6 +396,7 @@ export async function createTour(req: AuthRequest, res: Response): Promise<void>
       );
     }
     await client.query('COMMIT');
+    logAction(req.userId!, 'CREATE', 'tour', tour.id, null, req.body, getAuditContext(req));
     res.status(201).json({ ...tour, stops_count: 0 });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -415,13 +439,14 @@ export async function updateTour(req: AuthRequest, res: Response): Promise<void>
     await client.query('BEGIN');
 
     const existing = await client.query(
-      'SELECT type FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]
+      'SELECT * FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]
     );
     if (existing.rowCount === 0) {
       await client.query('ROLLBACK');
       res.status(404).json({ error: 'Запись не найдена или нет доступа' });
       return;
     }
+    const oldTour = existing.rows[0];
 
     const tourType: TourType = type === 'tour' || type === 'concert'
       ? type
@@ -475,6 +500,7 @@ export async function updateTour(req: AuthRequest, res: Response): Promise<void>
     const stopsCount = await db.query(
       'SELECT COUNT(*)::int AS c FROM tour_stops WHERE tour_id=$1', [id]
     );
+    logAction(req.userId!, 'UPDATE', 'tour', id, oldTour, req.body, getAuditContext(req));
     res.json({ ...result.rows[0], stops_count: stopsCount.rows[0].c });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -488,13 +514,15 @@ export async function updateTour(req: AuthRequest, res: Response): Promise<void>
 export async function deleteTour(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
-    const result = await db.query(
-      'DELETE FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]
+    const oldResult = await db.query(
+      'SELECT * FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]
     );
-    if (result.rowCount === 0) {
+    if (oldResult.rowCount === 0) {
       res.status(404).json({ error: 'Тур не найден или нет доступа' });
       return;
     }
+    await db.query('DELETE FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]);
+    logAction(req.userId!, 'DELETE', 'tour', id, oldResult.rows[0], null, getAuditContext(req));
     res.json({ success: true });
   } catch (err) {
     console.error('[tours] deleteTour error:', err);

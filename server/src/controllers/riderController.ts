@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
+import { logAction, getAuditContext } from '../middleware/auditMiddleware';
 
 // Пересчёт rider_status тура
 async function recalcRiderStatus(tourId: string): Promise<void> {
@@ -55,7 +56,9 @@ export async function addRiderItem(req: AuthRequest, res: Response): Promise<voi
       [id, item_name.trim(), status ?? 'pending', photo_url?.trim() ?? '', note?.trim() ?? '']
     );
     await recalcRiderStatus(id);
-    res.status(201).json(result.rows[0]);
+    const item = result.rows[0];
+    logAction(req.userId!, 'CREATE', 'rider_checklist', item.id, null, req.body, getAuditContext(req));
+    res.status(201).json(item);
   } catch (err) {
     console.error('[rider] addRiderItem error:', err);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
@@ -88,6 +91,9 @@ export async function updateRiderItem(req: AuthRequest, res: Response): Promise<
        photo_url?.trim() ?? '', note?.trim() ?? '', itemId]
     );
     await recalcRiderStatus(existing.rows[0].tour_id);
+    const oldItem = { ...existing.rows[0] };
+    delete oldItem.created_by;
+    logAction(req.userId!, 'UPDATE', 'rider_checklist', itemId, oldItem, req.body, getAuditContext(req));
     res.json(result.rows[0]);
   } catch (err) {
     console.error('[rider] updateRiderItem error:', err);
@@ -100,7 +106,7 @@ export async function deleteRiderItem(req: AuthRequest, res: Response): Promise<
   const { itemId } = req.params;
   try {
     const existing = await db.query(
-      `SELECT rc.tour_id, t.created_by FROM rider_checklist rc
+      `SELECT rc.*, t.created_by FROM rider_checklist rc
        JOIN tour t ON t.id = rc.tour_id WHERE rc.id=$1`,
       [itemId]
     );
@@ -108,8 +114,11 @@ export async function deleteRiderItem(req: AuthRequest, res: Response): Promise<
       res.status(404).json({ error: 'Пункт не найден' });
       return;
     }
+    const oldItem = { ...existing.rows[0] };
+    delete oldItem.created_by;
     await db.query('DELETE FROM rider_checklist WHERE id=$1', [itemId]);
     await recalcRiderStatus(existing.rows[0].tour_id);
+    logAction(req.userId!, 'DELETE', 'rider_checklist', itemId, oldItem, null, getAuditContext(req));
     res.json({ success: true });
   } catch (err) {
     console.error('[rider] deleteRiderItem error:', err);

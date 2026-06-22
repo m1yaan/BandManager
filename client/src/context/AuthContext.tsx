@@ -10,7 +10,7 @@ type AuthContextType = {
   isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, role?: UserRole) => Promise<void>;
-  signOut: () => void;
+  signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
 
@@ -23,7 +23,7 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   signIn: async () => {},
   signUp: async () => {},
-  signOut: () => {},
+  signOut: async () => {},
   refreshUser: async () => {},
 });
 
@@ -32,13 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadUser = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) { setLoading(false); return; }
     try {
       const { user } = await authApi.me();
       setUser(user);
     } catch {
-      localStorage.removeItem('token');
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -47,19 +45,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { loadUser(); }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { token, user } = await authApi.login(email, password);
-    localStorage.setItem('token', token);
+    const { user } = await authApi.login(email, password);
     setUser(user);
   };
 
   const signUp = async (email: string, password: string, role: UserRole = 'manager') => {
-    const { token, user } = await authApi.register(email, password, role);
-    localStorage.setItem('token', token);
+    const { user } = await authApi.register(email, password, role);
     setUser(user);
   };
 
-  const signOut = () => {
-    localStorage.removeItem('token');
+  const signOut = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // cookie may already be cleared
+    }
     setUser(null);
   };
 

@@ -37,14 +37,15 @@ import {
   getUsers, getUser, updateUser, blockUser, unblockUser, deleteUser, getAdminStats,
   getUserBands, getUserSingers, getUserSongs, getUserTours, getUserMessages,
 } from '../controllers/adminController';
+import { getAuditLog } from '../controllers/auditController';
 import { getTickets, getTicket, createTicket, updateTicket } from '../controllers/supportController';
 import {
   getContributors, createContributor, updateContributor, deleteContributor
 } from '../controllers/contributorsController';
-import { authMiddleware, requireAdmin, requireManager } from '../middleware/auth';
+import { exportTourFinances } from '../controllers/exportController';
+import { requireAdmin, requireManager } from '../middleware/authenticate';
 
 const router = Router();
-router.use(authMiddleware);
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 router.get('/bands/stats', getBandStats);
@@ -95,6 +96,7 @@ router.put('/tours/:id/stops/:stopId',     requireManager, updateTourStop);
 router.delete('/tours/:id/stops/:stopId',  requireManager, deleteTourStop);
 router.get('/tours/:id/finances',          getTourFinances);
 router.put('/tours/:id/finances',          requireManager, updateTourFinances);
+router.get('/tours/:id/export',            requireManager, exportTourFinances);
 router.get('/tours/:id/rider-status',      getTourRiderStatus);
 
 // ── Rider ─────────────────────────────────────────────────────────────────────
@@ -135,6 +137,7 @@ router.get('/calendar',           getCalendarEvents);
 router.get('/calendar/conflicts', checkConflicts);
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
+router.get('/admin/audit',               requireAdmin, getAuditLog);
 router.get('/admin/stats',               requireAdmin, getAdminStats);
 router.get('/admin/users',               requireAdmin, getUsers);
 router.get('/admin/users/:id',           requireAdmin, getUser);

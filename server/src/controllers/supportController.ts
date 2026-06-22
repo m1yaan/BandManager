@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
 
 // GET /api/support — свои тикеты (admin видит все)
 export async function getTickets(req: AuthRequest, res: Response): Promise<void> {

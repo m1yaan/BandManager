@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Music2, Mic2, Radio, MapPin,
   LogOut, Menu, ChevronRight, Sun, Moon,
   BarChart3, User, MessageSquare, CalendarDays,
-  Shield, HelpCircle,
+  Shield, HelpCircle, ScrollText,
 } from 'lucide-react';
 import { Section } from '../App';
 
@@ -33,6 +33,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'reports',   label: 'Отчёты',      icon: BarChart3,        color: '#e879f9', managerOnly: true },
   { id: 'support',   label: 'Поддержка',   icon: HelpCircle,       color: '#fb923c' },
   { id: 'admin',     label: 'Админ-панель', icon: Shield,           color: '#f87171', adminOnly: true },
+  { id: 'admin-audit', label: 'Журнал аудита', icon: ScrollText,     color: '#c084fc', adminOnly: true },
 ];
 
 type Props = {

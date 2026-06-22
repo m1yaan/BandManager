@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
+import { logAction, getAuditContext } from '../middleware/auditMiddleware';
 
 // GET /api/singers
 export async function getSingers(req: AuthRequest, res: Response): Promise<void> {
@@ -145,6 +146,7 @@ export async function createSinger(req: AuthRequest, res: Response): Promise<voi
       );
     }
     await client.query('COMMIT');
+    logAction(req.userId!, 'CREATE', 'singer', singer.id, null, req.body, getAuditContext(req));
     res.status(201).json(singer);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -169,6 +171,15 @@ export async function updateSinger(req: AuthRequest, res: Response): Promise<voi
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    const oldResult = await client.query(
+      'SELECT * FROM singer WHERE id=$1 AND created_by=$2',
+      [id, req.userId]
+    );
+    if (oldResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Исполнитель не найден или нет доступа' });
+      return;
+    }
     const result = await client.query(
       `UPDATE singer SET name=$1, country=$2, rating=$3, bio=$4
        WHERE id=$5 AND created_by=$6 RETURNING *`,
@@ -190,6 +201,7 @@ export async function updateSinger(req: AuthRequest, res: Response): Promise<voi
       }
     }
     await client.query('COMMIT');
+    logAction(req.userId!, 'UPDATE', 'singer', id, oldResult.rows[0], req.body, getAuditContext(req));
     res.json(result.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -204,13 +216,15 @@ export async function updateSinger(req: AuthRequest, res: Response): Promise<voi
 export async function deleteSinger(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
-    const result = await db.query(
-      'DELETE FROM singer WHERE id=$1 AND created_by=$2', [id, req.userId]
+    const oldResult = await db.query(
+      'SELECT * FROM singer WHERE id=$1 AND created_by=$2', [id, req.userId]
     );
-    if (result.rowCount === 0) {
+    if (oldResult.rowCount === 0) {
       res.status(404).json({ error: 'Исполнитель не найден или нет доступа' });
       return;
     }
+    await db.query('DELETE FROM singer WHERE id=$1 AND created_by=$2', [id, req.userId]);
+    logAction(req.userId!, 'DELETE', 'singer', id, oldResult.rows[0], null, getAuditContext(req));
     res.json({ success: true });
   } catch (err) {
     console.error('[singers] deleteSinger error:', err);

@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
 
 function monthBounds(year: number, month: number): { start: string; end: string } {
   const daysInMonth = new Date(year, month, 0).getDate();

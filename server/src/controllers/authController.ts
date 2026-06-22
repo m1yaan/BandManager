@@ -2,13 +2,47 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
+import { setCsrfToken } from '../middleware/csrf';
+
+const AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+
+const AUTH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict' as const,
+  maxAge: AUTH_COOKIE_MAX_AGE,
+  path: '/',
+};
 
 function signToken(userId: string, email: string, role: string): string {
   const options: SignOptions = {
     expiresIn: (process.env.JWT_EXPIRES_IN ?? '7d') as SignOptions['expiresIn'],
   };
   return jwt.sign({ userId, email, role }, process.env.JWT_SECRET!, options);
+}
+
+function setAuthCookie(res: Response, token: string): void {
+  res.cookie('auth_token', token, AUTH_COOKIE_OPTIONS);
+}
+
+function sendAuthResponse(
+  res: Response,
+  statusCode: number,
+  user: { id: string; email: string; name: string | null; avatar_url: string | null; role: string }
+): void {
+  const token = signToken(user.id, user.email, user.role ?? 'manager');
+  setAuthCookie(res, token);
+  setCsrfToken(res);
+  res.status(statusCode).json({
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      avatar_url: user.avatar_url,
+      role: user.role ?? 'manager',
+    },
+  });
 }
 
 // POST /api/auth/register
@@ -42,12 +76,7 @@ export async function register(req: Request, res: Response): Promise<void> {
       [email, hash, validRole]
     );
 
-    const user = result.rows[0];
-    const token = signToken(user.id, user.email, user.role);
-    res.status(201).json({
-      token,
-      user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url, role: user.role },
-    });
+    sendAuthResponse(res, 201, result.rows[0]);
   } catch (err) {
     console.error('[auth] register error:', err);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
@@ -80,15 +109,23 @@ export async function login(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const token = signToken(user.id, user.email, user.role ?? 'manager');
-    res.json({
-      token,
-      user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url, role: user.role ?? 'manager' },
-    });
+    sendAuthResponse(res, 200, user);
   } catch (err) {
     console.error('[auth] login error:', err);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
+}
+
+// POST /api/auth/logout
+export function logout(_req: Request, res: Response): void {
+  res.clearCookie('auth_token', AUTH_COOKIE_OPTIONS);
+  res.clearCookie('csrf_token', {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+  });
+  res.json({ success: true });
 }
 
 // GET /api/auth/me

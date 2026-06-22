@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  toursApi, bandsApi, singersApi, songsApi,
+  toursApi, bandsApi, singersApi, songsApi, downloadTourReport,
   Tour, TourType, Band, Singer, Song, TourStop, RiderItem,
 } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -12,7 +12,7 @@ import { SkeletonList } from '../components/Skeleton';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   Plus, Pencil, Trash2, MapPin, Calendar, ChevronDown, ChevronUp, Music,
-  Music2, Mic2, Ticket, Settings, CheckCircle2, AlertCircle, Clock, X, DollarSign, Route,
+  Music2, Mic2, Ticket, Settings, CheckCircle2, AlertCircle, Clock, X, DollarSign, Route, Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -189,6 +189,15 @@ function TourExpandedPanel({ tour, isOwner, onTourUpdated }: {
 
   const progressConfirmed = rider.filter(r => r.status === 'confirmed').length;
   const progressTotal = rider.length;
+
+  const handleDownloadReport = async () => {
+    try {
+      await downloadTourReport(tour.id);
+      toast.success('Отчёт скачан');
+    } catch {
+      toast.error('Не удалось скачать отчёт');
+    }
+  };
 
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-subtle)' }}>
@@ -383,11 +392,18 @@ function TourExpandedPanel({ tour, isOwner, onTourUpdated }: {
                 <DollarSign className="w-4 h-4" style={{ color: 'var(--success)' }} />
                 <span className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>Финансовый расчёт</span>
               </div>
-              {isOwner && (
-                <button onClick={() => setEditingFinances(!editingFinances)} className="btn btn-ghost btn-icon">
-                  <Settings className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
-                </button>
-              )}
+              <div className="flex items-center gap-1.5">
+                {isOwner && (
+                  <button onClick={handleDownloadReport} className="btn btn-ghost" style={{ fontSize: 13 }}>
+                    <Download className="w-4 h-4" /> Скачать отчёт
+                  </button>
+                )}
+                {isOwner && (
+                  <button onClick={() => setEditingFinances(!editingFinances)} className="btn btn-ghost btn-icon">
+                    <Settings className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                  </button>
+                )}
+              </div>
             </div>
 
             {editingFinances ? (

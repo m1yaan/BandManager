@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
+import { logAction, getAuditContext } from '../middleware/auditMiddleware';
 
 export async function getSongs(req: AuthRequest, res: Response): Promise<void> {
   try {
@@ -148,6 +149,7 @@ export async function createSong(req: AuthRequest, res: Response): Promise<void>
     }
 
     await client.query('COMMIT');
+    logAction(req.userId!, 'CREATE', 'song', song.id, null, req.body, getAuditContext(req));
     res.status(201).json(song);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -176,6 +178,16 @@ export async function updateSong(req: AuthRequest, res: Response): Promise<void>
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+
+    const oldResult = await client.query(
+      'SELECT * FROM song WHERE id=$1 AND created_by=$2',
+      [id, req.userId]
+    );
+    if (oldResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Песня не найдена или нет доступа' });
+      return;
+    }
 
     let finalReleaseDate = release_date || null;
     if (!finalReleaseDate && creation_year) {
@@ -225,6 +237,7 @@ export async function updateSong(req: AuthRequest, res: Response): Promise<void>
     }
 
     await client.query('COMMIT');
+    logAction(req.userId!, 'UPDATE', 'song', id, oldResult.rows[0], req.body, getAuditContext(req));
     res.json(result.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -238,14 +251,16 @@ export async function updateSong(req: AuthRequest, res: Response): Promise<void>
 export async function deleteSong(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
-    const result = await db.query(
-      'DELETE FROM song WHERE id=$1 AND created_by=$2',
+    const oldResult = await db.query(
+      'SELECT * FROM song WHERE id=$1 AND created_by=$2',
       [id, req.userId]
     );
-    if (result.rowCount === 0) {
+    if (oldResult.rowCount === 0) {
       res.status(404).json({ error: 'Песня не найдена или нет доступа' });
       return;
     }
+    await db.query('DELETE FROM song WHERE id=$1 AND created_by=$2', [id, req.userId]);
+    logAction(req.userId!, 'DELETE', 'song', id, oldResult.rows[0], null, getAuditContext(req));
     res.json({ success: true });
   } catch (err) {
     console.error('[songs] deleteSong error:', err);

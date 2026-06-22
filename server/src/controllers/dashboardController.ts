@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
 
 // GET /api/dashboard/financials — реальные данные туров для графика
 export async function getFinancials(req: AuthRequest, res: Response): Promise<void> {

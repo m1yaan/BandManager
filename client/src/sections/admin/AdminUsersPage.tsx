@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   Shield, Users, Ban, Unlock, Trash2, ChevronDown, BarChart3,
   Mail, Calendar, Crown, Mic2, Briefcase, Eye, X,
-  Music2, Radio, MapPin, MessageSquare,
+  Music2, Radio, MapPin, MessageSquare, ScrollText,
 } from 'lucide-react';
 import { NavigateFn } from '../../App';
 
@@ -276,7 +276,7 @@ type Props = {
   onNavigate: NavigateFn;
 };
 
-export default function AdminUsersPage({ onNavigate: _onNavigate }: Props) {
+export default function AdminUsersPage({ onNavigate }: Props) {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -335,9 +335,15 @@ export default function AdminUsersPage({ onNavigate: _onNavigate }: Props) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-[22px] font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Админ-панель</h1>
-        <p className="text-[13.5px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>Управление пользователями системы</p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div>
+          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Админ-панель</h1>
+          <p className="text-[13.5px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>Управление пользователями системы</p>
+        </div>
+        <button onClick={() => onNavigate('admin-audit')} className="btn btn-ghost flex-shrink-0"
+          style={{ fontSize: 13 }}>
+          <ScrollText className="w-4 h-4" /> Журнал действий
+        </button>
       </div>
 
       {stats && (

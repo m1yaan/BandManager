@@ -3,9 +3,14 @@ import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../lib/api';
 import { Music2, LogIn, UserPlus, Eye, EyeOff, Briefcase, Mic2 } from 'lucide-react';
 
+function getInitialMode(): 'login' | 'register' {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('mode') === 'register' ? 'register' : 'login';
+}
+
 export default function AuthPage() {
   const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register'>(getInitialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('manager');

@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
 
 export async function getContributors(req: AuthRequest, res: Response): Promise<void> {
   const { type, q } = req.query as { type?: string; q?: string };

@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
+import { logAction, getAuditContext } from '../middleware/auditMiddleware';
 
 const SENDER_NAMES = [
   'Алексей Иванов', 'Мария Петрова', 'Дмитрий Соколов', 'Елена Кузнецова',
@@ -182,6 +183,7 @@ export async function generateMessages(req: AuthRequest, res: Response): Promise
          '', text, date, fee, bandId, singerId]
       );
       created.push(r.rows[0]);
+      logAction(req.userId!, 'CREATE', 'message', r.rows[0].id, null, r.rows[0], getAuditContext(req));
 
       await db.query(
         `INSERT INTO notifications (user_id, title, message, type, link)
@@ -204,6 +206,16 @@ export async function acceptMessage(req: AuthRequest, res: Response): Promise<vo
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+
+    const oldMsgResult = await client.query(
+      'SELECT * FROM messages WHERE id=$1 AND user_id=$2',
+      [id, req.userId]
+    );
+    if (oldMsgResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Сообщение не найдено' });
+      return;
+    }
 
     const msgResult = await client.query(
       `UPDATE messages SET status='accepted', updated_at=now()
@@ -285,6 +297,7 @@ export async function acceptMessage(req: AuthRequest, res: Response): Promise<vo
       'SELECT COUNT(*) FROM messages WHERE user_id=$1 AND status=\'new\'', [req.userId]
     );
     await client.query('COMMIT');
+    logAction(req.userId!, 'UPDATE', 'message', id, oldMsgResult.rows[0], { status: 'accepted' }, getAuditContext(req));
     res.json({ message: msg, tour, unreadCount: parseInt(countResult.rows[0].count) });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -299,12 +312,20 @@ export async function acceptMessage(req: AuthRequest, res: Response): Promise<vo
 export async function declineMessage(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
+    const oldResult = await db.query(
+      'SELECT * FROM messages WHERE id=$1 AND user_id=$2',
+      [id, req.userId]
+    );
+    if (oldResult.rowCount === 0) {
+      res.status(404).json({ error: 'Сообщение не найдено' });
+      return;
+    }
     const result = await db.query(
       `UPDATE messages SET status='declined', updated_at=now()
        WHERE id=$1 AND user_id=$2 RETURNING *`,
       [id, req.userId]
     );
-    if (result.rowCount === 0) { res.status(404).json({ error: 'Сообщение не найдено' }); return; }
+    logAction(req.userId!, 'UPDATE', 'message', id, oldResult.rows[0], { status: 'declined' }, getAuditContext(req));
     const unreadCount = await getUnreadCountForUser(req.userId!);
     res.json({ message: result.rows[0], unreadCount });
   } catch (err) {
@@ -317,12 +338,20 @@ export async function declineMessage(req: AuthRequest, res: Response): Promise<v
 export async function deferMessage(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
+    const oldResult = await db.query(
+      'SELECT * FROM messages WHERE id=$1 AND user_id=$2',
+      [id, req.userId]
+    );
+    if (oldResult.rowCount === 0) {
+      res.status(404).json({ error: 'Сообщение не найдено' });
+      return;
+    }
     const result = await db.query(
       `UPDATE messages SET status='deferred', updated_at=now()
        WHERE id=$1 AND user_id=$2 RETURNING *`,
       [id, req.userId]
     );
-    if (result.rowCount === 0) { res.status(404).json({ error: 'Сообщение не найдено' }); return; }
+    logAction(req.userId!, 'UPDATE', 'message', id, oldResult.rows[0], { status: 'deferred' }, getAuditContext(req));
     const unreadCount = await getUnreadCountForUser(req.userId!);
     res.json({ message: result.rows[0], unreadCount });
   } catch (err) {

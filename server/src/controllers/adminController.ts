@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
 
 // GET /api/admin/users
 export async function getUsers(req: AuthRequest, res: Response): Promise<void> {

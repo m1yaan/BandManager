@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
+import { logAction, getAuditContext } from '../middleware/auditMiddleware';
 
 // GET /api/bands — только свои данные
 export async function getBands(req: AuthRequest, res: Response): Promise<void> {
@@ -121,6 +122,7 @@ export async function createBand(req: AuthRequest, res: Response): Promise<void>
     }
 
     await client.query('COMMIT');
+    logAction(req.userId!, 'CREATE', 'band', band.id, null, req.body, getAuditContext(req));
     res.status(201).json(band);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -152,6 +154,16 @@ export async function updateBand(req: AuthRequest, res: Response): Promise<void>
   try {
     await client.query('BEGIN');
 
+    const oldResult = await client.query(
+      'SELECT * FROM band WHERE id=$1 AND created_by=$2',
+      [id, req.userId]
+    );
+    if (oldResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Группа не найдена или нет доступа' });
+      return;
+    }
+
     const result = await client.query(
       `UPDATE band SET name=$1, foundation_year=$2, country=$3, rating=$4
        WHERE id=$5 AND created_by=$6 RETURNING *`,
@@ -181,6 +193,7 @@ export async function updateBand(req: AuthRequest, res: Response): Promise<void>
     }
 
     await client.query('COMMIT');
+    logAction(req.userId!, 'UPDATE', 'band', id, oldResult.rows[0], req.body, getAuditContext(req));
     res.json(result.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -195,14 +208,16 @@ export async function updateBand(req: AuthRequest, res: Response): Promise<void>
 export async function deleteBand(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
-    const result = await db.query(
-      'DELETE FROM band WHERE id = $1 AND created_by = $2',
+    const oldResult = await db.query(
+      'SELECT * FROM band WHERE id = $1 AND created_by = $2',
       [id, req.userId]
     );
-    if (result.rowCount === 0) {
+    if (oldResult.rowCount === 0) {
       res.status(404).json({ error: 'Группа не найдена или нет доступа' });
       return;
     }
+    await db.query('DELETE FROM band WHERE id = $1 AND created_by = $2', [id, req.userId]);
+    logAction(req.userId!, 'DELETE', 'band', id, oldResult.rows[0], null, getAuditContext(req));
     res.json({ success: true });
   } catch (err) {
     console.error('[bands] deleteBand error:', err);

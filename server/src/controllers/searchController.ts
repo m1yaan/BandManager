@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest } from '../middleware/authenticate';
 
 export async function globalSearch(req: AuthRequest, res: Response): Promise<void> {
   const { q = '' } = req.query as { q?: string };

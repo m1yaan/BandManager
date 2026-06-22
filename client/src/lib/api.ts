@@ -217,6 +217,38 @@ export type AdminStats = {
   messages: { unread: number };
 };
 
+export type AuditLogEntry = {
+  id: string;
+  user_id: string;
+  user_email: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  entity_type: string;
+  entity_id: string | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+};
+
+export type AuditLogResponse = {
+  items: AuditLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+};
+
+export type AuditLogParams = {
+  userId?: string;
+  entityType?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+};
+
 export type RiderAttentionItem = {
   id: string;
   program_name: string;
@@ -229,28 +261,46 @@ export type RiderAttentionItem = {
   singer_name: string | null;
 };
 
+function getCsrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('token');
+  const method = (options.method ?? 'GET').toUpperCase();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  if (['POST', 'PUT', 'DELETE'].includes(method)) {
+    const csrf = getCsrfToken();
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+  }
+  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers, credentials: 'include' });
   const data = await res.json().catch(() => ({ error: 'Неизвестная ошибка' }));
   if (!res.ok) throw new Error(data.error ?? `Ошибка: ${res.status}`);
   return data as T;
 }
 
+export const leadsApi = {
+  create: (email: string) =>
+    request<{ success: boolean }>('/api/leads', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+};
+
 export const authApi = {
   register: (email: string, password: string, role: UserRole = 'manager') =>
-    request<{ token: string; user: User }>('/api/auth/register', {
+    request<{ user: User }>('/api/auth/register', {
       method: 'POST', body: JSON.stringify({ email, password, role }),
     }),
   login: (email: string, password: string) =>
-    request<{ token: string; user: User }>('/api/auth/login', {
+    request<{ user: User }>('/api/auth/login', {
       method: 'POST', body: JSON.stringify({ email, password }),
     }),
+  logout: () =>
+    request<{ success: boolean }>('/api/auth/logout', { method: 'POST' }),
   me: () => request<{ user: User }>('/api/auth/me'),
   updateProfile: (p: { name?: string; avatar_url?: string }) =>
     request<{ user: User }>('/api/auth/profile', { method: 'PUT', body: JSON.stringify(p) }),
@@ -323,6 +373,31 @@ export const songsApi = {
   delete: (id: string) =>
     request<{ success: boolean }>(`/api/songs/${id}`, { method: 'DELETE' }),
 };
+
+export async function downloadTourReport(tourId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/tours/${tourId}/export`, {
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: 'Ошибка скачивания' }));
+    throw new Error(data.error ?? `Ошибка: ${res.status}`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition');
+  let filename = 'tour-report.xlsx';
+  if (disposition) {
+    const match = disposition.match(/filename="?([^";\n]+)"?/);
+    if (match) filename = match[1];
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 export const toursApi = {
   getAll: () => request<Tour[]>('/api/tours'),
@@ -444,6 +519,14 @@ export const adminApi = {
   getUserSongs: (id: string) => request<Song[]>(`/api/admin/users/${id}/songs`),
   getUserTours: (id: string) => request<Tour[]>(`/api/admin/users/${id}/tours`),
   getUserMessages: (id: string) => request<Message[]>(`/api/admin/users/${id}/messages`),
+  getAuditLog: (params?: AuditLogParams) => {
+    const q = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(params ?? {}).filter(([, v]) => v != null && v !== '') as [string, string][]
+      )
+    ).toString();
+    return request<AuditLogResponse>(`/api/admin/audit${q ? '?' + q : ''}`);
+  },
 };
 
 export const supportApi = {
