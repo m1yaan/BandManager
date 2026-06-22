@@ -77,7 +77,7 @@ function SingerDetailPage({
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={onBack} className="btn btn-ghost btn-icon">
+        <button onClick={onBack} className="btn btn-ghost btn-icon" aria-label="Назад">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <div className="flex-1">
@@ -356,13 +356,13 @@ const SingerCard = memo(({ singer, isOwner, onEdit, onDelete, onOpen }: SingerCa
           onClick={e => e.stopPropagation()}
         >
           <Tooltip label="Редактировать">
-            <button onClick={() => onEdit(singer)} className="btn btn-ghost btn-icon"
+            <button onClick={() => onEdit(singer)} className="btn btn-ghost btn-icon" aria-label="Редактировать"
               style={{ color: 'var(--text-tertiary)' }}>
               <Pencil className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
           <Tooltip label="Удалить">
-            <button onClick={() => onDelete(singer)} className="btn btn-ghost btn-icon"
+            <button onClick={() => onDelete(singer)} className="btn btn-ghost btn-icon" aria-label="Удалить"
               style={{ color: 'var(--text-tertiary)' }}>
               <Trash2 className="w-3.5 h-3.5" />
             </button>

@@ -188,7 +188,7 @@ function UserDetailsModal({ user, onClose }: { user: User; onClose: () => void }
                         <div className="flex-1">
                           <p className="text-[13.5px] font-medium" style={{ color: 'var(--text-primary)' }}>{s.title}</p>
                           <p className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>
-                            {s.composer_name || s.composer || '—'}
+                            {s.composer_name || '—'}
                           </p>
                         </div>
                         {s.release_date && (
@@ -296,14 +296,26 @@ export default function AdminUsersPage({ onNavigate }: Props) {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
+  const handleRoleChange = async (userId: string, newRole: string, managedBy?: string | null) => {
     try {
-      const updated = await adminApi.updateUser(userId, { role: newRole });
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: updated.role } : u));
+      const payload: { role: string; managed_by?: string | null } = { role: newRole };
+      if (newRole === 'artist') payload.managed_by = managedBy ?? null;
+      const updated = await adminApi.updateUser(userId, payload);
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: updated.role, managed_by: updated.managed_by } : u));
       toast.success('Роль изменена');
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
     setEditingRoleId(null);
   };
+
+  const handleManagedByChange = async (userId: string, managedBy: string) => {
+    try {
+      const updated = await adminApi.updateUser(userId, { role: 'artist', managed_by: managedBy || null });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, managed_by: updated.managed_by } : u));
+      toast.success('Менеджер назначен');
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+  };
+
+  const managers = users.filter(u => u.role === 'manager' || u.role === 'admin');
 
   const handleBlock = async (user: User) => {
     try {
@@ -390,7 +402,7 @@ export default function AdminUsersPage({ onNavigate }: Props) {
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                  {['Пользователь', 'Роль', 'Статус', 'Дата регистрации', 'Действия'].map(h => (
+                  {['Пользователь', 'Роль', 'Менеджер', 'Статус', 'Дата регистрации', 'Действия'].map(h => (
                     <th key={h} className="text-left px-5 py-3 text-[11.5px] font-semibold uppercase tracking-wider"
                       style={{ color: 'var(--text-tertiary)' }}>{h}</th>
                   ))}
@@ -432,7 +444,7 @@ export default function AdminUsersPage({ onNavigate }: Props) {
                                 <div className="absolute left-0 top-full mt-1 z-20 glass-dropdown rounded-xl overflow-hidden py-1"
                                   style={{ minWidth: 160 }}>
                                   {(['manager', 'artist', 'admin'] as const).map(r => (
-                                    <button key={r} onClick={() => handleRoleChange(u.id, r)}
+                                    <button key={r} onClick={() => handleRoleChange(u.id, r, u.managed_by ?? undefined)}
                                       className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-left transition-colors"
                                       style={{ color: u.role === r ? 'var(--accent)' : 'var(--text-primary)' }}
                                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle)')}
@@ -445,6 +457,24 @@ export default function AdminUsersPage({ onNavigate }: Props) {
                               </>
                             )}
                           </div>
+                        )}
+                      </td>
+
+                      <td className="px-5 py-4">
+                        {u.role === 'artist' && !isSelf ? (
+                          <select
+                            className="input-base text-[12px]"
+                            style={{ padding: '6px 10px', minWidth: 140 }}
+                            value={u.managed_by ?? ''}
+                            onChange={e => handleManagedByChange(u.id, e.target.value)}
+                          >
+                            <option value="">— не назначен —</option>
+                            {managers.map(m => (
+                              <option key={m.id} value={m.id}>{m.email}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>—</span>
                         )}
                       </td>
 

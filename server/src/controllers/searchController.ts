@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/authenticate';
+import { ownershipFilter, userScopeFilter } from '../db/ownership';
 
 export async function globalSearch(req: AuthRequest, res: Response): Promise<void> {
   const { q = '' } = req.query as { q?: string };
@@ -17,31 +18,32 @@ export async function globalSearch(req: AuthRequest, res: Response): Promise<voi
     const [bands, singers, songs, tours, messages] = await Promise.all([
       db.query(
         `SELECT id, name, country, rating FROM band
-         WHERE created_by = $2 AND LOWER(name) LIKE LOWER($1) LIMIT 5`,
+         WHERE ${ownershipFilter(undefined, '$2')} AND LOWER(name) LIKE LOWER($1) LIMIT 5`,
         [pattern, req.userId]
       ),
       db.query(
         `SELECT id, name FROM singer
-         WHERE created_by = $2 AND LOWER(name) LIKE LOWER($1) LIMIT 5`,
+         WHERE ${ownershipFilter(undefined, '$2')} AND LOWER(name) LIKE LOWER($1) LIMIT 5`,
         [pattern, req.userId]
       ),
       db.query(
-        `SELECT id, title, composer FROM song
-         WHERE created_by = $2
-           AND (LOWER(title) LIKE LOWER($1) OR LOWER(composer) LIKE LOWER($1))
+        `SELECT s.id, s.title, c.name AS composer FROM song s
+         LEFT JOIN contributor c ON c.id = s.composer_id
+         WHERE ${ownershipFilter('s', '$2')}
+           AND (LOWER(s.title) LIKE LOWER($1) OR LOWER(COALESCE(c.name, '')) LIKE LOWER($1))
          LIMIT 5`,
         [pattern, req.userId]
       ),
       db.query(
         `SELECT id, program_name, city, start_date FROM tour
-         WHERE created_by=$2
+         WHERE ${ownershipFilter(undefined, '$2')}
            AND (LOWER(program_name) LIKE LOWER($1) OR LOWER(city) LIKE LOWER($1))
          LIMIT 5`,
         [pattern, req.userId]
       ),
       db.query(
         `SELECT id, sender_name, organization, city, status FROM messages
-         WHERE user_id=$2
+         WHERE ${userScopeFilter('user_id', '$2')}
            AND (
              LOWER(sender_name) LIKE LOWER($1) OR
              LOWER(organization) LIKE LOWER($1) OR

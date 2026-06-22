@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/authenticate';
 import { logAction, getAuditContext } from '../middleware/auditMiddleware';
+import { ownershipFilter } from '../db/ownership';
 
 export async function getSongs(req: AuthRequest, res: Response): Promise<void> {
   try {
@@ -24,7 +25,7 @@ export async function getSongs(req: AuthRequest, res: Response): Promise<void> {
        LEFT JOIN singer si ON si.id = ss.singer_id
        LEFT JOIN song_band sb ON sb.song_id = s.id
        LEFT JOIN band b ON b.id = sb.band_id
-       WHERE s.created_by = $1
+       WHERE ${ownershipFilter('s', '$1')}
        GROUP BY s.id, c1.name, c1.id, c2.name, c2.id
        ORDER BY s.title`,
       [req.userId]
@@ -58,7 +59,7 @@ export async function getSongBands(req: AuthRequest, res: Response): Promise<voi
     const result = await db.query(
       `SELECT b.* FROM band b
        JOIN song_band sb ON sb.band_id = b.id
-       WHERE sb.song_id = $1 AND b.created_by = $2`,
+       WHERE sb.song_id = $1 AND ${ownershipFilter('b', '$2')}`,
       [id, req.userId]
     );
     res.json(result.rows);
@@ -180,7 +181,7 @@ export async function updateSong(req: AuthRequest, res: Response): Promise<void>
     await client.query('BEGIN');
 
     const oldResult = await client.query(
-      'SELECT * FROM song WHERE id=$1 AND created_by=$2',
+      `SELECT * FROM song WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`,
       [id, req.userId]
     );
     if (oldResult.rowCount === 0) {
@@ -252,7 +253,7 @@ export async function deleteSong(req: AuthRequest, res: Response): Promise<void>
   const { id } = req.params;
   try {
     const oldResult = await db.query(
-      'SELECT * FROM song WHERE id=$1 AND created_by=$2',
+      `SELECT * FROM song WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`,
       [id, req.userId]
     );
     if (oldResult.rowCount === 0) {

@@ -1,11 +1,11 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/authenticate';
+import { ownershipFilter } from '../db/ownership';
 
 // GET /api/dashboard/financials — реальные данные туров для графика
 export async function getFinancials(req: AuthRequest, res: Response): Promise<void> {
   try {
-    // Получаем туры за последние 6 месяцев
     const result = await db.query(
       `SELECT
          TO_CHAR(COALESCE(t.start_date, t.created_at::date), 'Mon') AS month,
@@ -21,7 +21,7 @@ export async function getFinancials(req: AuthRequest, res: Response): Promise<vo
            COALESCE(t.other_expenses,0)
          ) AS total_expenses
        FROM tour t
-       WHERE t.created_by = $1
+       WHERE ${ownershipFilter('t', '$1')}
          AND COALESCE(t.start_date, t.created_at::date) >= NOW() - INTERVAL '6 months'
        GROUP BY month, month_num, year
        ORDER BY year ASC, month_num ASC`,
@@ -35,7 +35,6 @@ export async function getFinancials(req: AuthRequest, res: Response): Promise<vo
       прибыль:  Math.round(parseFloat(r.total_income ?? '0') - parseFloat(r.total_expenses ?? '0')),
     }));
 
-    // Если данных нет — возвращаем пустой массив (frontend отобразит empty state)
     res.json(data);
   } catch (err) {
     console.error('[dashboard] getFinancials error:', err);
@@ -53,7 +52,7 @@ export async function getRiderAttention(req: AuthRequest, res: Response): Promis
        FROM tour t
        LEFT JOIN band b ON b.id = t.band_id
        LEFT JOIN singer s ON s.id = t.singer_id
-       WHERE t.created_by = $1
+       WHERE ${ownershipFilter('t', '$1')}
          AND t.rider_status IN ('empty', 'partial')
          AND t.start_date IS NOT NULL
          AND t.start_date >= NOW()

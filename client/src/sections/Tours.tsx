@@ -283,7 +283,7 @@ function TourExpandedPanel({ tour, isOwner, onTourUpdated }: {
                       </div>
                     </div>
                     {isOwner && (
-                      <button onClick={() => deleteStop(stop.id)} className="btn btn-ghost btn-icon"
+                      <button onClick={() => deleteStop(stop.id)} className="btn btn-ghost btn-icon" aria-label="Удалить остановку"
                         style={{ color: 'var(--text-tertiary)' }}>
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -355,7 +355,7 @@ function TourExpandedPanel({ tour, isOwner, onTourUpdated }: {
                             {STATUS_ICONS[s]}
                           </button>
                         ))}
-                        <button onClick={() => deleteRiderItem(item.id)} className="btn btn-ghost btn-icon ml-1"
+                        <button onClick={() => deleteRiderItem(item.id)} className="btn btn-ghost btn-icon ml-1" aria-label="Удалить пункт райдера"
                           style={{ color: 'var(--text-tertiary)' }}>
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -399,7 +399,7 @@ function TourExpandedPanel({ tour, isOwner, onTourUpdated }: {
                   </button>
                 )}
                 {isOwner && (
-                  <button onClick={() => setEditingFinances(!editingFinances)} className="btn btn-ghost btn-icon">
+                  <button onClick={() => setEditingFinances(!editingFinances)} className="btn btn-ghost btn-icon" aria-label="Настройки финансов">
                     <Settings className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
                   </button>
                 )}
@@ -731,13 +731,13 @@ export default function Tours({ onNavigate }: Props) {
                     {tour.created_by === user?.id && (
                       <>
                         <Tooltip label="Редактировать">
-                          <button onClick={() => openEdit(tour)} className="btn btn-ghost btn-icon"
+                          <button onClick={() => openEdit(tour)} className="btn btn-ghost btn-icon" aria-label="Редактировать"
                             style={{ color: 'var(--text-tertiary)' }}>
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                         </Tooltip>
                         <Tooltip label="Удалить">
-                          <button onClick={() => setDeleteTarget(tour)} className="btn btn-ghost btn-icon"
+                          <button onClick={() => setDeleteTarget(tour)} className="btn btn-ghost btn-icon" aria-label="Удалить"
                             style={{ color: 'var(--text-tertiary)' }}>
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -745,7 +745,7 @@ export default function Tours({ onNavigate }: Props) {
                       </>
                     )}
                     <Tooltip label={expandedId === tour.id ? 'Свернуть' : 'Раскрыть'}>
-                      <button onClick={() => toggleExpand(tour.id)} className="btn btn-ghost btn-icon"
+                      <button onClick={() => toggleExpand(tour.id)} className="btn btn-ghost btn-icon" aria-label={expandedId === tour.id ? 'Свернуть' : 'Раскрыть'}
                         style={{ color: 'var(--text-tertiary)' }}>
                         {expandedId === tour.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </button>

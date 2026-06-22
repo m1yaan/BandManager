@@ -2,6 +2,8 @@ import { Response } from 'express';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/authenticate';
 import { logAction, getAuditContext } from '../middleware/auditMiddleware';
+import { ownershipFilter } from '../db/ownership';
+import { validateRating } from '../utils/validation';
 
 // GET /api/singers
 export async function getSingers(req: AuthRequest, res: Response): Promise<void> {
@@ -14,8 +16,8 @@ export async function getSingers(req: AuthRequest, res: Response): Promise<void>
         ) AS bands
        FROM singer s
        LEFT JOIN band_member bm ON bm.singer_id = s.id
-       LEFT JOIN band b ON b.id = bm.band_id AND b.created_by = $1
-       WHERE s.created_by = $1
+       LEFT JOIN band b ON b.id = bm.band_id AND ${ownershipFilter('b', '$1')}
+       WHERE ${ownershipFilter('s', '$1')}
        GROUP BY s.id
        ORDER BY s.name`,
       [req.userId]
@@ -50,7 +52,7 @@ export async function getSinger(req: AuthRequest, res: Response): Promise<void> 
        LEFT JOIN band b ON b.id = bm.band_id
        LEFT JOIN song_singer ss ON ss.singer_id = s.id
        LEFT JOIN song so ON so.id = ss.song_id
-       WHERE s.id = $1 AND s.created_by = $2
+       WHERE s.id = $1 AND ${ownershipFilter('s', '$2')}
        GROUP BY s.id`,
       [id, req.userId]
     );
@@ -63,7 +65,7 @@ export async function getSinger(req: AuthRequest, res: Response): Promise<void> 
       `SELECT t.*, row_to_json(b.*) AS band
        FROM tour t
        LEFT JOIN band b ON b.id = t.band_id
-       WHERE t.created_by = $1
+       WHERE ${ownershipFilter('t', '$1')}
          AND (t.singer_id = $2
               OR t.band_id IN (
                 SELECT bm.band_id FROM band_member bm WHERE bm.singer_id = $2
@@ -91,7 +93,7 @@ export async function getSingerBands(req: AuthRequest, res: Response): Promise<v
     const result = await db.query(
       `SELECT b.* FROM band b
        JOIN band_member bm ON bm.band_id = b.id
-       WHERE bm.singer_id = $1 AND b.created_by = $2`,
+       WHERE bm.singer_id = $1 AND ${ownershipFilter('b', '$2')}`,
       [id, req.userId]
     );
     res.json(result.rows);
@@ -108,7 +110,7 @@ export async function getSingerSongs(req: AuthRequest, res: Response): Promise<v
     const result = await db.query(
       `SELECT DISTINCT so.* FROM song so
        JOIN song_singer ss ON ss.song_id = so.id
-       WHERE ss.singer_id = $1 AND so.created_by = $2
+       WHERE ss.singer_id = $1 AND ${ownershipFilter('so', '$2')}
        ORDER BY so.title`,
       [id, req.userId]
     );
@@ -129,13 +131,18 @@ export async function createSinger(req: AuthRequest, res: Response): Promise<voi
     res.status(400).json({ error: 'Имя обязательно' });
     return;
   }
+  const ratingCheck = validateRating(rating);
+  if (!ratingCheck.ok) {
+    res.status(400).json({ error: ratingCheck.error });
+    return;
+  }
   const client = await db.connect();
   try {
     await client.query('BEGIN');
     const result = await client.query(
       `INSERT INTO singer (name, country, rating, bio, created_by)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [name.trim(), country?.trim() ?? '', rating ?? null, bio?.trim() ?? '', req.userId]
+      [name.trim(), country?.trim() ?? '', ratingCheck.value, bio?.trim() ?? '', req.userId]
     );
     const singer = result.rows[0];
     if (bandIds?.length) {
@@ -168,11 +175,16 @@ export async function updateSinger(req: AuthRequest, res: Response): Promise<voi
     res.status(400).json({ error: 'Имя обязательно' });
     return;
   }
+  const ratingCheck = validateRating(rating);
+  if (!ratingCheck.ok) {
+    res.status(400).json({ error: ratingCheck.error });
+    return;
+  }
   const client = await db.connect();
   try {
     await client.query('BEGIN');
     const oldResult = await client.query(
-      'SELECT * FROM singer WHERE id=$1 AND created_by=$2',
+      `SELECT * FROM singer WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`,
       [id, req.userId]
     );
     if (oldResult.rowCount === 0) {
@@ -183,7 +195,7 @@ export async function updateSinger(req: AuthRequest, res: Response): Promise<voi
     const result = await client.query(
       `UPDATE singer SET name=$1, country=$2, rating=$3, bio=$4
        WHERE id=$5 AND created_by=$6 RETURNING *`,
-      [name.trim(), country?.trim() ?? '', rating ?? null, bio?.trim() ?? '', id, req.userId]
+      [name.trim(), country?.trim() ?? '', ratingCheck.value, bio?.trim() ?? '', id, req.userId]
     );
     if (result.rowCount === 0) {
       await client.query('ROLLBACK');
@@ -217,7 +229,7 @@ export async function deleteSinger(req: AuthRequest, res: Response): Promise<voi
   const { id } = req.params;
   try {
     const oldResult = await db.query(
-      'SELECT * FROM singer WHERE id=$1 AND created_by=$2', [id, req.userId]
+      `SELECT * FROM singer WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`, [id, req.userId]
     );
     if (oldResult.rowCount === 0) {
       res.status(404).json({ error: 'Исполнитель не найден или нет доступа' });

@@ -2,12 +2,14 @@ import { Response } from 'express';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/authenticate';
 import { logAction, getAuditContext } from '../middleware/auditMiddleware';
+import { ownershipFilter } from '../db/ownership';
+import { validateRating } from '../utils/validation';
 
 // GET /api/bands — только свои данные
 export async function getBands(req: AuthRequest, res: Response): Promise<void> {
   try {
     const result = await db.query(
-      'SELECT * FROM band WHERE created_by = $1 ORDER BY name',
+      `SELECT * FROM band WHERE ${ownershipFilter()} ORDER BY name`,
       [req.userId]
     );
     res.json(result.rows);
@@ -21,13 +23,13 @@ export async function getBands(req: AuthRequest, res: Response): Promise<void> {
 export async function getBandStats(req: AuthRequest, res: Response): Promise<void> {
   try {
     const [bandCount, singerCount, songCount, tourCount, topBands] = await Promise.all([
-      db.query('SELECT COUNT(*) FROM band WHERE created_by = $1', [req.userId]),
-      db.query('SELECT COUNT(*) FROM singer WHERE created_by = $1', [req.userId]),
-      db.query('SELECT COUNT(*) FROM song WHERE created_by = $1', [req.userId]),
-      db.query('SELECT COUNT(*) FROM tour WHERE created_by = $1', [req.userId]),
+      db.query(`SELECT COUNT(*) FROM band WHERE ${ownershipFilter()}`, [req.userId]),
+      db.query(`SELECT COUNT(*) FROM singer WHERE ${ownershipFilter()}`, [req.userId]),
+      db.query(`SELECT COUNT(*) FROM song WHERE ${ownershipFilter()}`, [req.userId]),
+      db.query(`SELECT COUNT(*) FROM tour WHERE ${ownershipFilter()}`, [req.userId]),
       db.query(
         `SELECT name, rating, country FROM band
-         WHERE created_by = $1 AND rating IS NOT NULL
+         WHERE ${ownershipFilter()} AND rating IS NOT NULL
          ORDER BY rating DESC LIMIT 5`,
         [req.userId]
       ),
@@ -52,7 +54,7 @@ export async function getBandDetails(req: AuthRequest, res: Response): Promise<v
   try {
     // Проверяем доступ
     const access = await db.query(
-      'SELECT id FROM band WHERE id = $1 AND created_by = $2',
+      `SELECT id FROM band WHERE id = $1 AND ${ownershipFilter(undefined, '$2')}`,
       [id, req.userId]
     );
     if (access.rowCount === 0) {
@@ -97,6 +99,12 @@ export async function createBand(req: AuthRequest, res: Response): Promise<void>
     return;
   }
 
+  const ratingCheck = validateRating(rating);
+  if (!ratingCheck.ok) {
+    res.status(400).json({ error: ratingCheck.error });
+    return;
+  }
+
   const client = await db.connect();
   try {
     await client.query('BEGIN');
@@ -104,7 +112,7 @@ export async function createBand(req: AuthRequest, res: Response): Promise<void>
     const result = await client.query(
       `INSERT INTO band (name, foundation_year, country, rating, created_by)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [name.trim(), foundation_year ?? null, country?.trim() ?? '', rating ?? null, req.userId]
+      [name.trim(), foundation_year ?? null, country?.trim() ?? '', ratingCheck.value, req.userId]
     );
     const band = result.rows[0];
 
@@ -150,12 +158,18 @@ export async function updateBand(req: AuthRequest, res: Response): Promise<void>
     return;
   }
 
+  const ratingCheck = validateRating(rating);
+  if (!ratingCheck.ok) {
+    res.status(400).json({ error: ratingCheck.error });
+    return;
+  }
+
   const client = await db.connect();
   try {
     await client.query('BEGIN');
 
     const oldResult = await client.query(
-      'SELECT * FROM band WHERE id=$1 AND created_by=$2',
+      `SELECT * FROM band WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`,
       [id, req.userId]
     );
     if (oldResult.rowCount === 0) {
@@ -167,7 +181,7 @@ export async function updateBand(req: AuthRequest, res: Response): Promise<void>
     const result = await client.query(
       `UPDATE band SET name=$1, foundation_year=$2, country=$3, rating=$4
        WHERE id=$5 AND created_by=$6 RETURNING *`,
-      [name.trim(), foundation_year ?? null, country?.trim() ?? '', rating ?? null, id, req.userId]
+      [name.trim(), foundation_year ?? null, country?.trim() ?? '', ratingCheck.value, id, req.userId]
     );
 
     if (result.rowCount === 0) {
@@ -209,7 +223,7 @@ export async function deleteBand(req: AuthRequest, res: Response): Promise<void>
   const { id } = req.params;
   try {
     const oldResult = await db.query(
-      'SELECT * FROM band WHERE id = $1 AND created_by = $2',
+      `SELECT * FROM band WHERE id = $1 AND ${ownershipFilter(undefined, '$2')}`,
       [id, req.userId]
     );
     if (oldResult.rowCount === 0) {

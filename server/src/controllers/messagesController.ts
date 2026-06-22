@@ -2,6 +2,8 @@ import { Response } from 'express';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/authenticate';
 import { logAction, getAuditContext } from '../middleware/auditMiddleware';
+import { ownershipFilter, userScopeFilter } from '../db/ownership';
+import { validateRating } from '../utils/validation';
 
 const SENDER_NAMES = [
   'Алексей Иванов', 'Мария Петрова', 'Дмитрий Соколов', 'Елена Кузнецова',
@@ -24,7 +26,7 @@ function randomItem<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.
 
 async function getUnreadCountForUser(userId: string): Promise<number> {
   const result = await db.query(
-    `SELECT COUNT(*) FROM messages WHERE user_id=$1 AND status='new'`,
+    `SELECT COUNT(*) FROM messages WHERE ${userScopeFilter('user_id', '$1')} AND status='new'`,
     [userId]
   );
   return parseInt(result.rows[0].count, 10);
@@ -38,7 +40,7 @@ export async function getMessages(req: AuthRequest, res: Response): Promise<void
        FROM messages m
        LEFT JOIN band b ON b.id = m.band_id
        LEFT JOIN singer s ON s.id = m.singer_id
-       WHERE m.user_id=$1 AND m.status='new'
+       WHERE ${userScopeFilter('m.user_id', '$1')} AND m.status='new'
        ORDER BY m.created_at DESC`,
       [req.userId]
     );
@@ -57,7 +59,7 @@ export async function getDeferredMessages(req: AuthRequest, res: Response): Prom
        FROM messages m
        LEFT JOIN band b ON b.id = m.band_id
        LEFT JOIN singer s ON s.id = m.singer_id
-       WHERE m.user_id=$1 AND m.status='deferred'
+       WHERE ${userScopeFilter('m.user_id', '$1')} AND m.status='deferred'
        ORDER BY m.created_at DESC`,
       [req.userId]
     );
@@ -78,7 +80,7 @@ export async function getRecentMessages(req: AuthRequest, res: Response): Promis
        FROM messages m
        LEFT JOIN band b ON b.id = m.band_id
        LEFT JOIN singer s ON s.id = m.singer_id
-       WHERE m.user_id=$1 AND m.status='new'
+       WHERE ${userScopeFilter('m.user_id', '$1')} AND m.status='new'
        ORDER BY m.created_at DESC LIMIT 5`,
       [req.userId]
     );
@@ -118,7 +120,8 @@ export async function getHistory(req: AuthRequest, res: Response): Promise<void>
        FROM messages m
        LEFT JOIN band b ON b.id = m.band_id
        LEFT JOIN singer s ON s.id = m.singer_id
-       WHERE m.user_id=$1 AND m.status=ANY($2::text[])
+       WHERE ${userScopeFilter('m.user_id', '$1')}
+         AND m.status=ANY($2::text[])
          AND ($3='' OR LOWER(m.sender_name) LIKE LOWER($3)
               OR LOWER(m.organization) LIKE LOWER($3)
               OR LOWER(m.message_text) LIKE LOWER($3))
@@ -136,10 +139,10 @@ export async function getHistory(req: AuthRequest, res: Response): Promise<void>
 export async function generateMessages(req: AuthRequest, res: Response): Promise<void> {
   try {
     const bandsResult = await db.query(
-      'SELECT id, name FROM band WHERE created_by=$1', [req.userId]
+      'SELECT id, name FROM band WHERE ' + ownershipFilter(undefined, '$1'), [req.userId]
     );
     const singersResult = await db.query(
-      'SELECT id, name FROM singer WHERE created_by=$1', [req.userId]
+      'SELECT id, name FROM singer WHERE ' + ownershipFilter(undefined, '$1'), [req.userId]
     );
 
     const bands = bandsResult.rows;
@@ -241,7 +244,7 @@ export async function acceptMessage(req: AuthRequest, res: Response): Promise<vo
     let rating = 5;
     if (bandId) {
       const bandCheck = await client.query(
-        'SELECT rating FROM band WHERE id=$1 AND created_by=$2',
+        'SELECT rating FROM band WHERE id=$1 AND ' + ownershipFilter(undefined, '$2'),
         [bandId, req.userId]
       );
       if (bandCheck.rowCount === 0) {
@@ -250,9 +253,15 @@ export async function acceptMessage(req: AuthRequest, res: Response): Promise<vo
         return;
       }
       rating = parseFloat(bandCheck.rows[0]?.rating ?? '5') || 5;
+      const ratingCheck = validateRating(rating);
+      if (!ratingCheck.ok) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: ratingCheck.error });
+        return;
+      }
     } else if (singerId) {
       const singerCheck = await client.query(
-        'SELECT rating FROM singer WHERE id=$1 AND created_by=$2',
+        'SELECT rating FROM singer WHERE id=$1 AND ' + ownershipFilter(undefined, '$2'),
         [singerId, req.userId]
       );
       if (singerCheck.rowCount === 0) {
@@ -261,6 +270,12 @@ export async function acceptMessage(req: AuthRequest, res: Response): Promise<vo
         return;
       }
       rating = parseFloat(singerCheck.rows[0]?.rating ?? '5') || 5;
+      const ratingCheck = validateRating(rating);
+      if (!ratingCheck.ok) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: ratingCheck.error });
+        return;
+      }
     }
 
     const basePrice = 1000;

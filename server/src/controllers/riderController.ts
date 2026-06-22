@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/authenticate';
 import { logAction, getAuditContext } from '../middleware/auditMiddleware';
+import { ownershipFilter } from '../db/ownership';
 
 // Пересчёт rider_status тура
 async function recalcRiderStatus(tourId: string): Promise<void> {
@@ -22,7 +23,10 @@ export async function getRider(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
     // Проверяем доступ к туру
-    const access = await db.query('SELECT id FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]);
+    const access = await db.query(
+      `SELECT id FROM tour WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`,
+      [id, req.userId]
+    );
     if (access.rowCount === 0) { res.status(404).json({ error: 'Тур не найден' }); return; }
 
     const result = await db.query(
@@ -47,7 +51,10 @@ export async function addRiderItem(req: AuthRequest, res: Response): Promise<voi
     return;
   }
   try {
-    const access = await db.query('SELECT id FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]);
+    const access = await db.query(
+      `SELECT id FROM tour WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`,
+      [id, req.userId]
+    );
     if (access.rowCount === 0) { res.status(404).json({ error: 'Тур не найден' }); return; }
 
     const result = await db.query(
@@ -74,12 +81,12 @@ export async function updateRiderItem(req: AuthRequest, res: Response): Promise<
   try {
     // Получаем item + проверяем доступ через тур
     const existing = await db.query(
-      `SELECT rc.*, t.created_by FROM rider_checklist rc
+      `SELECT rc.* FROM rider_checklist rc
        JOIN tour t ON t.id = rc.tour_id
-       WHERE rc.id=$1`,
-      [itemId]
+       WHERE rc.id=$1 AND ${ownershipFilter('t', '$2')}`,
+      [itemId, req.userId]
     );
-    if (!existing.rows[0] || existing.rows[0].created_by !== req.userId) {
+    if (!existing.rows[0]) {
       res.status(404).json({ error: 'Пункт не найден' });
       return;
     }
@@ -92,7 +99,6 @@ export async function updateRiderItem(req: AuthRequest, res: Response): Promise<
     );
     await recalcRiderStatus(existing.rows[0].tour_id);
     const oldItem = { ...existing.rows[0] };
-    delete oldItem.created_by;
     logAction(req.userId!, 'UPDATE', 'rider_checklist', itemId, oldItem, req.body, getAuditContext(req));
     res.json(result.rows[0]);
   } catch (err) {
@@ -106,16 +112,16 @@ export async function deleteRiderItem(req: AuthRequest, res: Response): Promise<
   const { itemId } = req.params;
   try {
     const existing = await db.query(
-      `SELECT rc.*, t.created_by FROM rider_checklist rc
-       JOIN tour t ON t.id = rc.tour_id WHERE rc.id=$1`,
-      [itemId]
+      `SELECT rc.* FROM rider_checklist rc
+       JOIN tour t ON t.id = rc.tour_id
+       WHERE rc.id=$1 AND ${ownershipFilter('t', '$2')}`,
+      [itemId, req.userId]
     );
-    if (!existing.rows[0] || existing.rows[0].created_by !== req.userId) {
+    if (!existing.rows[0]) {
       res.status(404).json({ error: 'Пункт не найден' });
       return;
     }
     const oldItem = { ...existing.rows[0] };
-    delete oldItem.created_by;
     await db.query('DELETE FROM rider_checklist WHERE id=$1', [itemId]);
     await recalcRiderStatus(existing.rows[0].tour_id);
     logAction(req.userId!, 'DELETE', 'rider_checklist', itemId, oldItem, null, getAuditContext(req));

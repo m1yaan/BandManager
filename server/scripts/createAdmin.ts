@@ -3,6 +3,7 @@
  * Run: npm run seed:admin (from server directory)
  */
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -13,7 +14,13 @@ const db = new Pool({ connectionString: process.env.DATABASE_URL });
 
 async function run() {
   const email = 'bandmanager_admin@mail.ru';
-  const password = '123qwe123';
+  const password = process.env.ADMIN_SEED_PASSWORD?.trim()
+    || crypto.randomBytes(16).toString('hex');
+
+  if (!process.env.ADMIN_SEED_PASSWORD?.trim()) {
+    console.log('[seed] Admin password:', password);
+  }
+
   const hash = await bcrypt.hash(password, 10);
 
   const existing = await db.query('SELECT id FROM users WHERE email = $1', [email]);

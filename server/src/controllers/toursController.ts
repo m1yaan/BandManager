@@ -3,6 +3,8 @@ import { PoolClient } from 'pg';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/authenticate';
 import { logAction, getAuditContext } from '../middleware/auditMiddleware';
+import { ownershipFilter } from '../db/ownership';
+import { validateRating } from '../utils/validation';
 
 type TourType = 'tour' | 'concert';
 
@@ -26,7 +28,7 @@ export async function getTours(req: AuthRequest, res: Response): Promise<void> {
       FROM tour t
       LEFT JOIN band b ON b.id = t.band_id
       LEFT JOIN singer s ON s.id = t.singer_id
-      WHERE t.created_by = $1
+      WHERE ${ownershipFilter('t', '$1')}
       ORDER BY t.start_date DESC NULLS LAST
     `, [req.userId]);
     res.json(result.rows);
@@ -40,7 +42,7 @@ export async function getTourSongs(req: AuthRequest, res: Response): Promise<voi
   const { id } = req.params;
   try {
     const access = await db.query(
-      'SELECT id FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]
+      `SELECT id FROM tour WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`, [id, req.userId]
     );
     if (access.rowCount === 0) { res.status(404).json({ error: 'Тур не найден' }); return; }
     const result = await db.query(
@@ -57,7 +59,7 @@ export async function getTourStops(req: AuthRequest, res: Response): Promise<voi
   const { id } = req.params;
   try {
     const access = await db.query(
-      `SELECT id, type FROM tour WHERE id=$1 AND created_by=$2`, [id, req.userId]
+      `SELECT id, type FROM tour WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`, [id, req.userId]
     );
     if (access.rowCount === 0) { res.status(404).json({ error: 'Тур не найден' }); return; }
     if (access.rows[0].type === 'concert') {
@@ -85,7 +87,7 @@ export async function addTourStop(req: AuthRequest, res: Response): Promise<void
   };
   try {
     const access = await db.query(
-      'SELECT id, type, start_date, end_date FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]
+      `SELECT id, type, start_date, end_date FROM tour WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`, [id, req.userId]
     );
     if (access.rowCount === 0) { res.status(404).json({ error: 'Тур не найден' }); return; }
     const tour = access.rows[0];
@@ -134,7 +136,7 @@ export async function updateTourStop(req: AuthRequest, res: Response): Promise<v
   };
   try {
     const access = await db.query(
-      'SELECT id, type, start_date, end_date FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]
+      `SELECT id, type, start_date, end_date FROM tour WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`, [id, req.userId]
     );
     if (access.rowCount === 0) { res.status(404).json({ error: 'Тур не найден' }); return; }
     if (access.rows[0].type !== 'tour') {
@@ -193,7 +195,7 @@ export async function deleteTourStop(req: AuthRequest, res: Response): Promise<v
   const { id, stopId } = req.params;
   try {
     const access = await db.query(
-      'SELECT id, type FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]
+      `SELECT id, type FROM tour WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`, [id, req.userId]
     );
     if (access.rowCount === 0) { res.status(404).json({ error: 'Тур не найден' }); return; }
     if (access.rows[0].type !== 'tour') {
@@ -244,7 +246,7 @@ export async function getTourFinances(req: AuthRequest, res: Response): Promise<
         COALESCE(avg_ticket_price, 0)::numeric           AS avg_ticket_price,
         COALESCE(city_coefficient, 1.0)::numeric         AS city_coefficient,
         COALESCE(base_ticket_price, 1000)::numeric       AS base_ticket_price
-       FROM tour WHERE id=$1 AND created_by=$2`,
+       FROM tour WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`,
       [id, req.userId]
     );
     if (!result.rows[0]) { res.status(404).json({ error: 'Тур не найден' }); return; }
@@ -285,13 +287,21 @@ export async function updateTourFinances(req: AuthRequest, res: Response): Promi
        FROM tour t
        LEFT JOIN band b ON b.id = t.band_id
        LEFT JOIN singer s ON s.id = t.singer_id
-       WHERE t.id=$1 AND t.created_by=$2`,
+       WHERE t.id=$1 AND ${ownershipFilter('t', '$2')}`,
       [id, req.userId]
     );
     if (tourData.rowCount === 0) { res.status(404).json({ error: 'Тур не найден' }); return; }
 
     const row = tourData.rows[0];
-    const rating = parseFloat(row.band_rating ?? row.singer_rating ?? '5') || 5;
+    const rawRating = row.band_rating ?? row.singer_rating;
+    if (rawRating != null) {
+      const ratingCheck = validateRating(parseFloat(String(rawRating)));
+      if (!ratingCheck.ok) {
+        res.status(400).json({ error: ratingCheck.error });
+        return;
+      }
+    }
+    const rating = rawRating != null ? parseFloat(String(rawRating)) : 5;
     const coeff = parseFloat(String(city_coefficient ?? 1.0)) || 1.0;
     const basePrice = parseFloat(String(base_ticket_price ?? 1000)) || 1000;
     const calculatedAvgTicketPrice = row.type === 'tour'
@@ -439,7 +449,7 @@ export async function updateTour(req: AuthRequest, res: Response): Promise<void>
     await client.query('BEGIN');
 
     const existing = await client.query(
-      'SELECT * FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]
+      `SELECT * FROM tour WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`, [id, req.userId]
     );
     if (existing.rowCount === 0) {
       await client.query('ROLLBACK');
@@ -515,7 +525,7 @@ export async function deleteTour(req: AuthRequest, res: Response): Promise<void>
   const { id } = req.params;
   try {
     const oldResult = await db.query(
-      'SELECT * FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]
+      `SELECT * FROM tour WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`, [id, req.userId]
     );
     if (oldResult.rowCount === 0) {
       res.status(404).json({ error: 'Тур не найден или нет доступа' });
@@ -534,7 +544,7 @@ export async function getTourRiderStatus(req: AuthRequest, res: Response): Promi
   const { id } = req.params;
   try {
     const tour = await db.query(
-      'SELECT rider_status FROM tour WHERE id=$1 AND created_by=$2', [id, req.userId]
+      `SELECT rider_status FROM tour WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`, [id, req.userId]
     );
     if (!tour.rows[0]) { res.status(404).json({ error: 'Тур не найден' }); return; }
     const items = await db.query(

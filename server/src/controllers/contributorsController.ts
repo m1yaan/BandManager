@@ -1,11 +1,12 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/authenticate';
+import { ownershipFilter } from '../db/ownership';
 
 export async function getContributors(req: AuthRequest, res: Response): Promise<void> {
   const { type, q } = req.query as { type?: string; q?: string };
   try {
-    let query = `SELECT * FROM contributor WHERE created_by = $1`;
+    let query = `SELECT * FROM contributor WHERE ${ownershipFilter(undefined, '$1')}`;
     const params: string[] = [req.userId!];
     if (type && ['COMPOSER', 'LYRICIST', 'BOTH'].includes(type)) {
       params.push(type);
@@ -36,20 +37,15 @@ export async function createContributor(req: AuthRequest, res: Response): Promis
     return;
   }
   try {
-    const existing = await db.query(
-      'SELECT id FROM contributor WHERE LOWER(name) = LOWER($1) AND created_by = $2 AND type = $3',
-      [name.trim(), req.userId, type]
-    );
-    if (existing.rows.length > 0) {
-      res.json(existing.rows[0]);
-      return;
-    }
     const result = await db.query(
       `INSERT INTO contributor (name, type, created_by)
-       VALUES ($1, $2, $3) RETURNING *`,
+       VALUES ($1, $2, $3)
+       ON CONFLICT ((LOWER(name)), type, created_by)
+       DO UPDATE SET name = EXCLUDED.name
+       RETURNING *`,
       [name.trim(), type, req.userId]
     );
-    res.status(201).json(result.rows[0]);
+    res.status(result.rowCount && result.rows[0] ? 201 : 200).json(result.rows[0]);
   } catch (err) {
     console.error('[contributors] createContributor:', err);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
@@ -66,7 +62,7 @@ export async function updateContributor(req: AuthRequest, res: Response): Promis
   try {
     const result = await db.query(
       `UPDATE contributor SET name=$1, type=COALESCE($2,type)
-       WHERE id=$3 AND created_by=$4 RETURNING *`,
+       WHERE id=$3 AND ${ownershipFilter(undefined, '$4')} RETURNING *`,
       [name.trim(), type ?? null, id, req.userId]
     );
     if (result.rowCount === 0) {
@@ -84,7 +80,7 @@ export async function deleteContributor(req: AuthRequest, res: Response): Promis
   const { id } = req.params;
   try {
     await db.query(
-      'DELETE FROM contributor WHERE id=$1 AND created_by=$2',
+      `DELETE FROM contributor WHERE id=$1 AND ${ownershipFilter(undefined, '$2')}`,
       [id, req.userId]
     );
     res.json({ success: true });

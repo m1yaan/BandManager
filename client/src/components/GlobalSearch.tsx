@@ -159,7 +159,7 @@ export function GlobalSearch({ onNavigate }: Props) {
                       items={results.songs.map(s => ({
                         id: s.id,
                         label: s.title,
-                        sub: s.composer,
+                        sub: (s as { composer?: string }).composer ?? '',
                         onClick: () => { onNavigate('songs'); close(); },
                       }))}
                     />

@@ -6,7 +6,7 @@ import { AuthRequest } from '../middleware/authenticate';
 export async function getUsers(req: AuthRequest, res: Response): Promise<void> {
   try {
     const result = await db.query(
-      `SELECT id, email, name, avatar_url, role, is_blocked, created_at
+      `SELECT id, email, name, avatar_url, role, is_blocked, managed_by, created_at
        FROM users
        ORDER BY created_at DESC`
     );
@@ -22,7 +22,7 @@ export async function getUser(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
   try {
     const result = await db.query(
-      `SELECT id, email, name, avatar_url, role, is_blocked, created_at FROM users WHERE id = $1`,
+      `SELECT id, email, name, avatar_url, role, is_blocked, managed_by, created_at FROM users WHERE id = $1`,
       [id]
     );
     if (!result.rows[0]) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
@@ -36,7 +36,7 @@ export async function getUser(req: AuthRequest, res: Response): Promise<void> {
 // PUT /api/admin/users/:id — изменить роль
 export async function updateUser(req: AuthRequest, res: Response): Promise<void> {
   const { id } = req.params;
-  const { role } = req.body as { role?: string };
+  const { role, managed_by } = req.body as { role?: string; managed_by?: string | null };
 
   if (id === req.userId && role !== 'admin') {
     res.status(400).json({ error: 'Нельзя снять роль ADMIN у самого себя' });
@@ -49,10 +49,27 @@ export async function updateUser(req: AuthRequest, res: Response): Promise<void>
     return;
   }
 
+  let managedByValue: string | null = null;
+  if (role === 'artist') {
+    if (managed_by) {
+      const managerCheck = await db.query(
+        `SELECT id FROM users WHERE id = $1 AND role IN ('manager', 'admin')`,
+        [managed_by]
+      );
+      if (managerCheck.rowCount === 0) {
+        res.status(400).json({ error: 'Менеджер не найден' });
+        return;
+      }
+      managedByValue = managed_by;
+    }
+  }
+
   try {
     const result = await db.query(
-      `UPDATE users SET role = $1 WHERE id = $2 RETURNING id, email, name, role, is_blocked, created_at`,
-      [role, id]
+      `UPDATE users SET role = $1, managed_by = $2
+       WHERE id = $3
+       RETURNING id, email, name, role, is_blocked, managed_by, created_at`,
+      [role, managedByValue, id]
     );
     if (result.rowCount === 0) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
     res.json(result.rows[0]);

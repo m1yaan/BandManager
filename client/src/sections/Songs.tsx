@@ -145,9 +145,9 @@ export default function Songs({ onNavigate: _onNavigate }: Props) {
     setForm({
       title: s.title,
       composer_id: s.composer_id ?? '',
-      composer_name: s.composer_name ?? s.composer ?? '',
+      composer_name: s.composer_name ?? '',
       lyricist_id: s.lyricist_id ?? '',
-      lyricist_name: s.lyricist_name ?? s.lyricist ?? '',
+      lyricist_name: s.lyricist_name ?? '',
       release_date: s.release_date ?? (s.creation_year ? `${s.creation_year}-01-01` : ''),
     });
     setSelectedSingerIds(s.singers?.map(si => si.id) ?? []);
@@ -279,10 +279,10 @@ export default function Songs({ onNavigate: _onNavigate }: Props) {
                       </div>
                     </td>
                     <td className="px-5 py-4 hidden md:table-cell text-[13.5px]" style={{ color: 'var(--text-secondary)' }}>
-                      {song.composer_name || song.composer || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                      {song.composer_name || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
                     </td>
                     <td className="px-5 py-4 hidden lg:table-cell text-[13.5px]" style={{ color: 'var(--text-secondary)' }}>
-                      {song.lyricist_name || song.lyricist || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                      {song.lyricist_name || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
                     </td>
                     <td className="px-5 py-4 hidden sm:table-cell text-[13.5px]" style={{ color: 'var(--text-secondary)' }}>
                       {formatDate(song) ?? <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
@@ -291,13 +291,13 @@ export default function Songs({ onNavigate: _onNavigate }: Props) {
                       {song.created_by === user?.id && (
                         <div className="relative z-10 flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                           <Tooltip label="Редактировать">
-                            <button onClick={() => openEdit(song)} className="btn btn-ghost btn-icon"
+                            <button onClick={() => openEdit(song)} className="btn btn-ghost btn-icon" aria-label="Редактировать"
                               style={{ color: 'var(--text-tertiary)' }}>
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
                           <Tooltip label="Удалить">
-                            <button onClick={() => setDeleteTarget(song)} className="btn btn-ghost btn-icon"
+                            <button onClick={() => setDeleteTarget(song)} className="btn btn-ghost btn-icon" aria-label="Удалить"
                               style={{ color: 'var(--text-tertiary)' }}>
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>

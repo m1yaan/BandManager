@@ -159,19 +159,19 @@ export default function Bands({ onNavigate, initialBandId: _initialBandId }: Pro
                   {band.created_by === user?.id && (
                     <>
                       <Tooltip label="Редактировать">
-                        <button onClick={() => openEdit(band)} className="btn btn-ghost btn-icon" style={{ color: 'var(--text-tertiary)' }}>
+                        <button onClick={() => openEdit(band)} className="btn btn-ghost btn-icon" aria-label="Редактировать" style={{ color: 'var(--text-tertiary)' }}>
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                       </Tooltip>
                       <Tooltip label="Удалить">
-                        <button onClick={() => setDeleteTarget(band)} className="btn btn-ghost btn-icon" style={{ color: 'var(--text-tertiary)' }}>
+                        <button onClick={() => setDeleteTarget(band)} className="btn btn-ghost btn-icon" aria-label="Удалить" style={{ color: 'var(--text-tertiary)' }}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </Tooltip>
                     </>
                   )}
                   <Tooltip label={expandedId === band.id ? 'Свернуть' : 'Раскрыть'}>
-                    <button onClick={() => toggleExpand(band.id)} className="btn btn-ghost btn-icon" style={{ color: 'var(--text-tertiary)' }}>
+                    <button onClick={() => toggleExpand(band.id)} className="btn btn-ghost btn-icon" aria-label={expandedId === band.id ? 'Свернуть' : 'Раскрыть'} style={{ color: 'var(--text-tertiary)' }}>
                       {expandedId === band.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
                   </Tooltip>

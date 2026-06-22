@@ -10,10 +10,7 @@ ALTER TABLE users
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false;
 
--- Назначить ADMIN конкретному пользователю
-UPDATE users
-SET role = 'admin'
-WHERE email = 'mishapetrov_pxrtmaus@mail.ru';
+-- Admin role is assigned via server/scripts/createAdmin.ts
 
 -- ─── Support tickets ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS support_tickets (

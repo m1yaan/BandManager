@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { db } from '../db/pool';
 import { AuthRequest } from '../middleware/authenticate';
+import { ownershipFilter, userScopeFilter, ownershipFilterColumn } from '../db/ownership';
 
 function monthBounds(year: number, month: number): { start: string; end: string } {
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -33,7 +34,7 @@ export async function getCalendarEvents(req: AuthRequest, res: Response): Promis
        FROM tour t
        LEFT JOIN band b ON b.id = t.band_id
        LEFT JOIN singer s ON s.id = t.singer_id
-       WHERE t.created_by = $1
+       WHERE ${ownershipFilter('t', '$1')}
          AND COALESCE(t.type, 'concert') = 'concert'
          AND t.start_date IS NOT NULL
          ${dateFilter.replace(/event_date/g, 't.start_date')}`,
@@ -49,7 +50,7 @@ export async function getCalendarEvents(req: AuthRequest, res: Response): Promis
        JOIN tour t ON t.id = ts.tour_id
        LEFT JOIN band b ON b.id = t.band_id
        LEFT JOIN singer s ON s.id = t.singer_id
-       WHERE t.created_by = $1
+       WHERE ${ownershipFilter('t', '$1')}
          AND t.type = 'tour'
          AND ts.event_date IS NOT NULL
          ${dateFilter}`,
@@ -69,13 +70,13 @@ export async function getCalendarEvents(req: AuthRequest, res: Response): Promis
               NULL AS band_name, NULL AS singer_name,
               'offer' AS type
        FROM messages m
-       WHERE m.user_id = $1
+       WHERE ${userScopeFilter('m.user_id', '$1')}
          AND m.status = 'accepted'
          AND m.proposed_date IS NOT NULL
          ${acceptedDateFilter}
          AND NOT EXISTS (
            SELECT 1 FROM tour t
-           WHERE t.created_by = m.user_id
+           WHERE ${ownershipFilterColumn('t', 'm.user_id')}
              AND t.start_date = m.proposed_date
              AND COALESCE(t.city, '') = COALESCE(m.city, '')
              AND (
@@ -128,7 +129,7 @@ export async function checkConflicts(req: AuthRequest, res: Response): Promise<v
       `SELECT t.id, t.program_name, t.city, t.start_date, t.end_date
        FROM tour t
        WHERE ${ownerFilter}
-         AND t.created_by = $5
+         AND ${ownershipFilter('t', '$5')}
          AND t.id != COALESCE($4::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
          AND t.start_date IS NOT NULL
          AND (

@@ -9,6 +9,7 @@ export type User = {
   avatar_url?: string;
   role: UserRole;
   is_blocked?: boolean;
+  managed_by?: string | null;
   created_at?: string;
 };
 
@@ -49,8 +50,6 @@ export type Contributor = {
 export type Song = {
   id: string;
   title: string;
-  composer: string;
-  lyricist: string;
   composer_id: string | null;
   lyricist_id: string | null;
   composer_name?: string;
@@ -509,7 +508,7 @@ export const adminApi = {
   getStats: () => request<AdminStats>('/api/admin/stats'),
   getUsers: () => request<User[]>('/api/admin/users'),
   getUser: (id: string) => request<User>(`/api/admin/users/${id}`),
-  updateUser: (id: string, data: { role: string }) =>
+  updateUser: (id: string, data: { role: string; managed_by?: string | null }) =>
     request<User>(`/api/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   blockUser: (id: string) => request<User>(`/api/admin/users/${id}/block`, { method: 'POST' }),
   unblockUser: (id: string) => request<User>(`/api/admin/users/${id}/unblock`, { method: 'POST' }),

@@ -32,11 +32,15 @@ function getConnectSrc(): string[] {
 }
 
 export function getHelmetMiddleware() {
+  const scriptSrc = isProduction
+    ? ["'self'"]
+    : ["'self'", "'unsafe-inline'"];
+
   return helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc,
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         imgSrc: ["'self'", 'data:', 'https:'],
         connectSrc: getConnectSrc(),
